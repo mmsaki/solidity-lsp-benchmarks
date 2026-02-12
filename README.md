@@ -25,8 +25,7 @@ Detailed results per benchmark in [results/](./results).
 
 - [solidity-language-server](https://github.com/mmsaki/solidity-language-server): `cargo install solidity-language-server`
 - [solc](https://docs.soliditylang.org/en/latest/installing-solidity.html)
-- [nomicfoundation-solidity-language-server](https://github.com/NomicFoundation/hardhat-vscode): `npm i -g @nomicfoundation/solidity-language-server`
-- [forge](https://book.getfoundry.sh/getting-started/installation)
+- [nomicfoundation-solidity-language-server](https://github.com/NomicFoundation/hardhat-vscode)
 
 ## Run
 
