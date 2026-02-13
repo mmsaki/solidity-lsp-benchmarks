@@ -1,0 +1,54 @@
+# Project root containing the Solidity files
+project: examples
+
+# Target file to benchmark (relative to project root)
+file: Counter.sol
+
+# Target position for position-based benchmarks (0-based, see below)
+line: 21
+col: 8
+
+# Benchmark settings
+iterations: 10
+warmup: 2
+timeout: 10        # seconds per request
+index_timeout: 15  # seconds for server to index/warm up
+output: benchmarks/counter
+benchmarks:
+  - spawn
+  - diagnostics
+  - definition
+  - hover
+  - references
+
+# LSP servers to benchmark
+servers:
+  - label: mmsaki
+    description: Solidity Language Server by mmsaki
+    link: https://github.com/mmsaki/solidity-language-server
+    cmd: solidity-language-server
+    args: []
+
+  - label: solc
+    description: Official Solidity compiler LSP
+    link: https://docs.soliditylang.org
+    cmd: solc
+    args: ["--lsp"]
+
+  - label: nomicfoundation
+    description: Hardhat/Nomic Foundation Solidity Language Server
+    link: https://github.com/NomicFoundation/hardhat-vscode
+    cmd: nomicfoundation-solidity-language-server
+    args: ["--stdio"]
+
+  - label: juanfranblanco
+    description: VSCode Solidity by Juan Blanco
+    link: https://github.com/juanfranblanco/vscode-solidity
+    cmd: vscode-solidity-server
+    args: ["--stdio"]
+
+  - label: qiuxiang
+    description: Solidity Language Server by qiuxiang
+    link: https://github.com/qiuxiang/solidity-ls
+    cmd: solidity-ls
+    args: ["--stdio"]
