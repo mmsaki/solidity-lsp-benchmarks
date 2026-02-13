@@ -1,0 +1,326 @@
+{
+  "benchmarks": [
+    {
+      "name": "Spawn + Init",
+      "servers": [
+        {
+          "mean_ms": 4.0,
+          "p50_ms": 4.0,
+          "p95_ms": 4.0,
+          "response": "\"ok\"",
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 112.3,
+          "p50_ms": 112.3,
+          "p95_ms": 112.3,
+          "response": "\"ok\"",
+          "server": "solc",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 848.3,
+          "p50_ms": 848.3,
+          "p95_ms": 848.3,
+          "response": "\"ok\"",
+          "server": "nomicfoundation",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 515.2,
+          "p50_ms": 515.2,
+          "p95_ms": 515.2,
+          "response": "\"ok\"",
+          "server": "juanfranblanco",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 68.4,
+          "p50_ms": 68.4,
+          "p95_ms": 68.4,
+          "response": "\"ok\"",
+          "server": "qiuxiang",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "name": "Diagnostics",
+      "servers": [
+        {
+          "mean_ms": 439.1,
+          "p50_ms": 439.1,
+          "p95_ms": 439.1,
+          "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"mixed-case-function\",\n      \"message\": \"[forge lint] function names should use mixedCase\",\n      \"range\": {\n        \"end\": {\n          \"character\": 21,\n          \"line\": 114\n        },\n        \"start\": {\n          \"character\": 13,\n          \"line\": 114\n        }\n      },\n      \"severity\": 3,\n      \"source\": \"forge-lint\"\n    },\n    {\n      \"code\": \"mixed-case-variable\",\n      \"message\": \"[forge lint] mutable variables should use mixedCase\",...",
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 132.9,
+          "p50_ms": 132.9,
+          "p95_ms": 132.9,
+          "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 6275,\n      \"message\": \"ParserError: Source \\\"/Users/meek/developer/mmsaki/solidity-lsp-benchmarks/v4-core/lib/openzeppelin-contracts/certora/patched/access/extensions/AccessControlDefaultAdminRules.sol\\\" not found: File not found. Searched the following locations: \\\"/Users/meek/developer/mmsaki/solidity-lsp-benchmarks/v4-core\\\", \\\"/Users/meek/developer/mmsaki/solidity-lsp-benchmarks/v4-core/node_modules\\\".\",\n      \"range\": {\n        \"end\": {...",
+          "server": "solc",
+          "status": "ok"
+        },
+        {
+          "error": "timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Go to Definition",
+      "servers": [
+        {
+          "mean_ms": 8.3,
+          "p50_ms": 8.3,
+          "p95_ms": 8.3,
+          "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 8,\n      \"line\": 9\n    },\n    \"start\": {\n      \"character\": 8,\n      \"line\": 9\n    }\n  },\n  \"uri\": \"file:///Users/meek/developer/mmsaki/solidity-lsp-benchmarks/v4-core/src/libraries/TickMath.sol\"\n}",
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "response": "[]",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Go to Declaration",
+      "servers": [
+        {
+          "mean_ms": 8.4,
+          "p50_ms": 8.4,
+          "p95_ms": 8.4,
+          "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 8,\n      \"line\": 9\n    },\n    \"start\": {\n      \"character\": 8,\n      \"line\": 9\n    }\n  },\n  \"uri\": \"file:///Users/meek/developer/mmsaki/solidity-lsp-benchmarks/v4-core/src/libraries/TickMath.sol\"\n}",
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "response": "error: Unknown method textDocument/declaration",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Hover",
+      "servers": [
+        {
+          "mean_ms": 13.7,
+          "p50_ms": 13.7,
+          "p95_ms": 13.7,
+          "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",\n    \"value\": \"```solidity\\nlibrary TickMath\\n```\\n\\n---\\n@title Math library for computing sqrt prices from ticks and vice versa\\nComputes sqrt price for ticks of size 1.0001, i.e. sqrt(1.0001^tick) as fixed point Q64.96 numbers. Supports\\nprices between 2**-128 and 2**128\"\n  }\n}",
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "response": "null",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Find References",
+      "servers": [
+        {
+          "mean_ms": 10.0,
+          "p50_ms": 10.0,
+          "p95_ms": 10.0,
+          "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 32,\n        \"line\": 213\n      },\n      \"start\": {\n        \"character\": 24,\n        \"line\": 213\n      }\n    },\n    \"uri\": \"file:///Users/meek/developer/mmsaki/solidity-lsp-benchmarks/v4-core/src/libraries/Pool.sol\"\n  },\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 44,\n        \"line\": 358\n      },\n      \"start\": {\n        \"character\": 36,\n        \"line\": 358\n      }\n    },...",
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "response": "error: Unknown method textDocument/references",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Document Symbols",
+      "servers": [
+        {
+          "mean_ms": 8.9,
+          "p50_ms": 8.9,
+          "p95_ms": 8.9,
+          "response": "[\n  {\n    \"kind\": 15,\n    \"name\": \"solidity ^0.8.0\",\n    \"range\": {\n      \"end\": {\n        \"character\": 23,\n        \"line\": 1\n      },\n      \"start\": {\n        \"character\": 0,\n        \"line\": 1\n      }\n    },\n    \"selectionRange\": {\n      \"end\": {\n        \"character\": 23,\n        \"line\": 1\n      },\n      \"start\": {\n        \"character\": 0,\n        \"line\": 1\n      }\n    }\n  },\n  {\n    \"kind\": 2,\n    \"name\": \"import ./SafeCast.sol\",\n    \"range\": {\n      \"end\": {\n        \"character\": 40,...",
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "response": "error: Unknown method textDocument/documentSymbol",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Document Links",
+      "servers": [
+        {
+          "mean_ms": 65.0,
+          "p50_ms": 65.0,
+          "p95_ms": 65.0,
+          "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 16,\n        \"line\": 3\n      },\n      \"start\": {\n        \"character\": 8,\n        \"line\": 3\n      }\n    },\n    \"target\": \"file:///Users/meek/developer/mmsaki/solidity-lsp-benchmarks/v4-core/src/libraries/SafeCast.sol\"\n  },\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 38,\n        \"line\": 3\n      },\n      \"start\": {\n        \"character\": 24,\n        \"line\": 3\n      }\n    },...",
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "response": "error: Unknown method textDocument/documentLink",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    }
+  ],
+  "date": "2026-02-13",
+  "servers": [
+    {
+      "description": "Solidity Language Server by mmsaki",
+      "link": "https://github.com/mmsaki/solidity-language-server",
+      "name": "mmsaki",
+      "version": "solidity-language-server 0.1.13+commit.843bd50.macos.aarch64"
+    },
+    {
+      "description": "Official Solidity compiler LSP",
+      "link": "https://docs.soliditylang.org",
+      "name": "solc",
+      "version": "0.8.33+commit.64118f21.Darwin.appleclang"
+    },
+    {
+      "description": "Hardhat/Nomic Foundation Solidity Language Server",
+      "link": "https://github.com/NomicFoundation/hardhat-vscode",
+      "name": "nomicfoundation",
+      "version": "@nomicfoundation/solidity-language-server 0.8.25"
+    },
+    {
+      "description": "VSCode Solidity by Juan Blanco",
+      "link": "https://github.com/juanfranblanco/vscode-solidity",
+      "name": "juanfranblanco",
+      "version": "vscode-solidity-server 0.0.187"
+    },
+    {
+      "description": "Solidity Language Server by qiuxiang",
+      "link": "https://github.com/qiuxiang/solidity-ls",
+      "name": "qiuxiang",
+      "version": "solidity-ls 0.5.4"
+    }
+  ],
+  "settings": {
+    "col": 15,
+    "file": "src/libraries/Pool.sol",
+    "index_timeout_secs": 15,
+    "iterations": 1,
+    "line": 102,
+    "timeout_secs": 10,
+    "warmup": 2
+  },
+  "timestamp": "2026-02-13T06:27:56Z"
+}
