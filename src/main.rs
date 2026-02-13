@@ -516,8 +516,7 @@ type Server = ServerConfig;
 
 enum BenchResult {
     Ok {
-        samples: Vec<f64>,
-        first_response: Value,
+        iterations: Vec<(f64, String)>, // (ms, response_summary)
     },
     Invalid {
         first_response: Value,
@@ -530,7 +529,7 @@ struct BenchRow {
     p50: f64,
     p95: f64,
     mean: f64,
-    samples: Vec<f64>,
+    iterations: Vec<(f64, String)>, // (ms, response_summary)
     kind: u8,
     fail_msg: String,
     summary: String,
@@ -540,10 +539,15 @@ impl BenchRow {
     fn to_json(&self) -> Value {
         match self.kind {
             0 => {
-                let rounded: Vec<f64> = self
-                    .samples
+                let iter_json: Vec<Value> = self
+                    .iterations
                     .iter()
-                    .map(|s| (s * 100.0).round() / 100.0)
+                    .map(|(ms, resp)| {
+                        json!({
+                            "ms": (ms * 100.0).round() / 100.0,
+                            "response": resp,
+                        })
+                    })
                     .collect();
                 json!({
                     "server": self.label,
@@ -551,7 +555,7 @@ impl BenchRow {
                     "p50_ms": (self.p50 * 10.0).round() / 10.0,
                     "p95_ms": (self.p95 * 10.0).round() / 10.0,
                     "mean_ms": (self.mean * 10.0).round() / 10.0,
-                    "samples_ms": rounded,
+                    "iterations": iter_json,
                     "response": self.summary,
                 })
             }
@@ -616,7 +620,7 @@ fn bench_spawn(
     n: usize,
     on_progress: &dyn Fn(&str),
 ) -> BenchResult {
-    let mut samples = Vec::new();
+    let mut iterations = Vec::new();
     for i in 0..(w + n) {
         on_progress(&iter_msg(i, w, n));
         let start = Instant::now();
@@ -630,14 +634,11 @@ fn bench_spawn(
         let ms = start.elapsed().as_secs_f64() * 1000.0;
         on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
         if i >= w {
-            samples.push(ms);
+            iterations.push((ms, "ok".to_string()));
         }
         c.kill();
     }
-    BenchResult::Ok {
-        samples,
-        first_response: json!({"result": "ok"}),
-    }
+    BenchResult::Ok { iterations }
 }
 
 /// Benchmark that spawns fresh each iteration, measures didOpen -> diagnostics.
@@ -651,8 +652,7 @@ fn bench_diagnostics(
     n: usize,
     on_progress: &dyn Fn(&str),
 ) -> BenchResult {
-    let mut samples = Vec::new();
-    let mut first: Option<DiagnosticsInfo> = None;
+    let mut iterations = Vec::new();
     for i in 0..(w + n) {
         on_progress(&format!("{}  waiting for diagnostics", iter_msg(i, w, n)));
         let mut c = match LspClient::spawn(&srv.cmd, &srv.args, cwd) {
@@ -671,23 +671,15 @@ fn bench_diagnostics(
                 let ms = start.elapsed().as_secs_f64() * 1000.0;
                 on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
                 if i >= w {
-                    samples.push(ms);
-                }
-                if first.is_none() {
-                    first = Some(diag_info);
+                    let summary = response_summary(&diag_info.message, 500);
+                    iterations.push((ms, summary));
                 }
             }
             Err(e) => return BenchResult::Fail(e),
         }
         c.kill();
     }
-    let diag = first.unwrap_or(DiagnosticsInfo {
-        message: json!(null),
-    });
-    BenchResult::Ok {
-        samples,
-        first_response: diag.message,
-    }
+    BenchResult::Ok { iterations }
 }
 
 /// Benchmark an LSP method on a single persistent server session.
@@ -723,8 +715,7 @@ fn bench_lsp_method(
     }
 
     let file_uri = uri(target_file);
-    let mut samples = Vec::new();
-    let mut first: Option<Value> = None;
+    let mut iterations = Vec::new();
     for i in 0..(w + n) {
         on_progress(&iter_msg(i, w, n));
         let start = Instant::now();
@@ -736,25 +727,20 @@ fn bench_lsp_method(
                 let ms = start.elapsed().as_secs_f64() * 1000.0;
                 on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
                 if i >= w {
-                    if first.is_none() {
-                        first = Some(resp.clone());
-                    }
                     if !is_valid_response(&resp) {
                         return BenchResult::Invalid {
                             first_response: resp,
                         };
                     }
-                    samples.push(ms);
+                    let summary = response_summary(&resp, 500);
+                    iterations.push((ms, summary));
                 }
             }
             Err(e) => return BenchResult::Fail(e),
         }
     }
     c.kill();
-    BenchResult::Ok {
-        samples,
-        first_response: first.unwrap_or(json!(null)),
-    }
+    BenchResult::Ok { iterations }
 }
 
 /// Run a benchmark across all servers, showing a spinner per server.
@@ -767,19 +753,20 @@ where
         let pb = spinner(&srv.label);
         let on_progress = |msg: &str| pb.set_message(msg.to_string());
         match f(srv, &on_progress) {
-            BenchResult::Ok {
-                mut samples,
-                first_response,
-            } => {
-                let (p50, p95, mean) = stats(&mut samples);
-                let summary = response_summary(&first_response, 500);
+            BenchResult::Ok { iterations } => {
+                let mut latencies: Vec<f64> = iterations.iter().map(|(ms, _)| *ms).collect();
+                let (p50, p95, mean) = stats(&mut latencies);
+                let summary = iterations
+                    .first()
+                    .map(|(_, s)| s.clone())
+                    .unwrap_or_default();
                 finish_pass(&pb, mean, p50, p95);
                 rows.push(BenchRow {
                     label: srv.label.to_string(),
                     p50,
                     p95,
                     mean,
-                    samples,
+                    iterations,
                     summary,
                     kind: 0,
                     fail_msg: String::new(),
@@ -793,7 +780,7 @@ where
                     p50: 0.0,
                     p95: 0.0,
                     mean: 0.0,
-                    samples: vec![],
+                    iterations: vec![],
                     summary,
                     kind: 1,
                     fail_msg: String::new(),
@@ -806,7 +793,7 @@ where
                     p50: 0.0,
                     p95: 0.0,
                     mean: 0.0,
-                    samples: vec![],
+                    iterations: vec![],
                     summary: String::new(),
                     kind: 2,
                     fail_msg: e,
