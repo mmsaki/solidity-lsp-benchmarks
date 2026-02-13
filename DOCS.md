@@ -7,41 +7,82 @@ This project produces two binaries:
 | `bench` | `src/main.rs` | Run LSP benchmarks, produce JSON snapshots |
 | `gen-readme` | `src/gen_readme.rs` | Read a JSON snapshot, generate `README.md` |
 
-## Prerequisites
-
-- [solidity-language-server](https://github.com/mmsaki/solidity-language-server): `cargo install solidity-language-server`
-- [solc](https://docs.soliditylang.org/en/latest/installing-solidity.html)
-- [nomicfoundation-solidity-language-server](https://github.com/NomicFoundation/hardhat-vscode) `npm i -g @nomicfoundation/solidity-language-server`
-- [vscode-solidity-server](https://github.com/juanfranblanco/vscode-solidity): `npm i -g vscode-solidity-server`
-- [solidity-ls](https://github.com/qiuxiang/solidity-ls): `npm i -g solidity-ls`
-
-## Run Benchmarks
+## Quick Start
 
 ```sh
 git clone --recursive https://github.com/mmsaki/solidity-lsp-benchmarks.git
 cd solidity-lsp-benchmarks
 cargo build --release
-./target/release/bench [OPTIONS] <COMMAND>
+./target/release/bench init       # generates benchmark.yaml
+```
+
+Edit `benchmark.yaml` to add your servers, then:
+
+```sh
+./target/release/bench all        # run all benchmarks
+./target/release/gen-readme       # generate README.md from results
+```
+
+The generated config uses `examples/Counter.sol` (included in the repo) as the default benchmark target -- a small contract with NatSpec comments and intentional unused variables to trigger diagnostics.
+
+## Prerequisites
+
+Install any LSP servers you want to benchmark. You only need the ones listed in your config:
+
+- [solidity-language-server](https://github.com/mmsaki/solidity-language-server): `cargo install solidity-language-server`
+- [solc](https://docs.soliditylang.org/en/latest/installing-solidity.html)
+- [nomicfoundation-solidity-language-server](https://github.com/NomicFoundation/hardhat-vscode): `npm i -g @nomicfoundation/solidity-language-server`
+- [vscode-solidity-server](https://github.com/juanfranblanco/vscode-solidity): `npm i -g vscode-solidity-server`
+- [solidity-ls](https://github.com/qiuxiang/solidity-ls): `npm i -g solidity-ls`
+
+Servers not found on `$PATH` are automatically skipped during benchmarks.
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `init` | Generate a `benchmark.yaml` template (won't overwrite existing) |
+| `all` | Run all benchmarks |
+| `spawn` | Spawn + initialize handshake |
+| `diagnostics` | Open file, time to first diagnostic |
+| `definition` | Go-to-definition at target position |
+| `declaration` | Go-to-declaration at target position |
+| `hover` | Hover at target position |
+| `references` | Find references at target position |
+| `documentSymbol` | Get document symbols |
+| `documentLink` | Get document links |
+
+Multiple benchmark commands can be combined:
+
+```sh
+bench spawn definition hover      # run these three benchmarks
 ```
 
 ## Configuration
 
 Benchmarks are configured via a YAML file. By default, `bench` looks for `benchmark.yaml` in the current directory. Use `-c` to point to a different config.
 
-### Writing a config
+### Generating a config
 
-Create a `benchmark.yaml` (or any `.yaml` file) with the following structure:
+```sh
+bench init                        # creates benchmark.yaml
+bench init -c my-bench.yaml       # creates at a custom path
+```
+
+This writes a commented template targeting `examples/Counter.sol` with placeholder server entries. Edit it to add your servers and (optionally) point to a different project/file.
+
+### Config structure
 
 ```yaml
 # Project root containing the Solidity files
-project: v4-core
+project: examples
 
 # Target file to benchmark (relative to project root)
-file: src/libraries/Pool.sol
+file: Counter.sol
 
-# Target position for position-based benchmarks (definition, hover, etc.)
-line: 102
-col: 15
+# Target position for position-based benchmarks (0-based, see below)
+line: 21
+col: 8
 
 # Benchmark settings
 iterations: 10
@@ -68,15 +109,25 @@ servers:
 
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
-| `project` | yes | — | Path to the project root (e.g. a git submodule) |
-| `file` | yes | — | Solidity file to benchmark, relative to `project` |
+| `project` | yes | -- | Path to the project root (e.g. a git submodule) |
+| `file` | yes | -- | Solidity file to benchmark, relative to `project` |
 | `line` | no | 102 | Target line for position-based benchmarks (0-based) |
 | `col` | no | 15 | Target column for position-based benchmarks (0-based) |
 | `iterations` | no | 10 | Number of measured iterations per benchmark |
 | `warmup` | no | 2 | Number of warmup iterations (discarded) |
 | `timeout` | no | 10 | Timeout per LSP request in seconds |
 | `index_timeout` | no | 15 | Time for server to index/warm up in seconds |
-| `servers` | yes | — | List of LSP servers to benchmark |
+| `servers` | yes | -- | List of LSP servers to benchmark |
+
+### Server fields
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `label` | yes | -- | Short name shown in results (e.g. `solc`) |
+| `description` | no | `""` | Longer description for the README |
+| `link` | no | `""` | URL to the server's project page |
+| `cmd` | yes | -- | Command to spawn the server |
+| `args` | no | `[]` | Command-line arguments passed to `cmd` |
 
 ### Target position (line and col)
 
@@ -100,7 +151,7 @@ col   9 (editor):       ^
 
 In the config, this becomes `line: 21`, `col: 8`.
 
-Another example — targeting `TickMath` in Pool.sol:
+Another example -- targeting `TickMath` in Pool.sol:
 
 ```
 line 103 (editor):  tick = TickMath.getTickAtSqrtPrice(sqrtPriceX96);
@@ -109,21 +160,11 @@ col  16 (editor):          ^
 
 In the config: `line: 102`, `col: 15`.
 
-The position should land on an identifier that LSP methods can act on — a type name, function call, variable, etc. This is used by `definition`, `declaration`, `hover`, and `references` benchmarks. The `spawn`, `diagnostics`, `documentSymbol`, and `documentLink` benchmarks ignore the position.
-
-### Server fields
-
-| Field | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `label` | yes | — | Short name shown in results (e.g. `solc`) |
-| `description` | no | `""` | Longer description for the README |
-| `link` | no | `""` | URL to the server's project page |
-| `cmd` | yes | — | Command to spawn the server |
-| `args` | no | `[]` | Command-line arguments passed to `cmd` |
+The position should land on an identifier that LSP methods can act on -- a type name, function call, variable, etc. This is used by `definition`, `declaration`, `hover`, and `references` benchmarks. The `spawn`, `diagnostics`, `documentSymbol`, and `documentLink` benchmarks ignore the position.
 
 ### Example configs
 
-**Minimal** — benchmark a single server against the included Counter.sol:
+**Minimal** -- benchmark a single server against the included Counter.sol:
 
 ```yaml
 project: examples
@@ -136,7 +177,7 @@ servers:
     args: ["--lsp"]
 ```
 
-**Quick iteration** — fast feedback during development:
+**Quick iteration** -- fast feedback during development:
 
 ```yaml
 project: examples
@@ -152,7 +193,7 @@ servers:
     cmd: solidity-language-server
 ```
 
-**Larger project** — benchmark against Uniswap V4-core:
+**Larger project** -- benchmark against Uniswap V4-core:
 
 ```yaml
 project: v4-core
@@ -169,7 +210,7 @@ servers:
     args: ["--lsp"]
 ```
 
-**Long timeouts** — for slow servers that need more indexing time:
+**Long timeouts** -- for slow servers that need more indexing time:
 
 ```yaml
 project: v4-core
@@ -215,30 +256,6 @@ bench all -n 1 -w 0             # override iterations/warmup from config
 bench all -s solc -s mmsaki      # only run solc and mmsaki from config
 bench all -T 30                  # give servers 30s to index (overrides config)
 bench hover -f src/PoolManager.sol --line 50 --col 8  # override file/position
-```
-
-### Commands
-
-| Command | Description |
-|---------|-------------|
-| `all` | Run all benchmarks |
-| `spawn` | Spawn + initialize handshake |
-| `diagnostics` | Open file, time to first diagnostic |
-| `definition` | Go-to-definition at target position |
-| `declaration` | Go-to-declaration at target position |
-| `hover` | Hover at target position |
-| `references` | Find references at target position |
-| `documentSymbol` | Get document symbols |
-| `documentLink` | Get document links |
-
-### Examples
-
-```sh
-bench all                              # all benchmarks, all servers from config
-bench spawn definition                 # run specific benchmarks
-bench diagnostics -s nomic -s solc     # filter to two servers
-bench hover -s mmsaki -n 1 -w 0       # quick single test
-bench all -c configs/poolmanager.yaml  # use a custom config
 ```
 
 ## Methodology
@@ -310,9 +327,19 @@ After running benchmarks, generate the README from JSON data:
 - `benchmarks/<timestamp>.json` -- full runs
 - `benchmarks/<names>/<timestamp>.json` -- partial runs (e.g. `benchmarks/diagnostics/`)
 
+During a run, partial results are saved to `benchmarks/partial/` after each benchmark completes. These are cleaned up automatically when the full run finishes.
+
 `gen-readme` reads a JSON snapshot and writes `README.md` with:
 - Summary results table with medals and trophy
 - Medal tally and overall winner
 - Feature support matrix
 - Detailed per-benchmark latency tables (mean/p50/p95)
 - Collapsible response details showing actual server responses
+
+## Example files
+
+The repo includes test resources in `examples/`:
+
+- **`examples/Counter.sol`** -- A simple Solidity contract with NatSpec doc comments and intentional unused variables (`unused`, `owner`, `old`, `temp`) that trigger diagnostics warnings from LSP servers. Used as the default benchmark target by `bench init`.
+
+For larger benchmarks, the repo also includes [Uniswap V4-core](https://github.com/Uniswap/v4-core) as a git submodule at `v4-core/` (618-line `Pool.sol`). Clone with `--recursive` to include it.
