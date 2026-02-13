@@ -1,0 +1,315 @@
+{
+  "benchmarks": [
+    {
+      "name": "Spawn + Init",
+      "servers": [
+        {
+          "mean_ms": 4.1,
+          "p50_ms": 4.2,
+          "p95_ms": 4.5,
+          "response": "\"ok\"",
+          "server": "Our LSP",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 113.0,
+          "p50_ms": 113.2,
+          "p95_ms": 113.7,
+          "response": "\"ok\"",
+          "server": "solc",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 866.6,
+          "p50_ms": 865.0,
+          "p95_ms": 890.3,
+          "response": "\"ok\"",
+          "server": "nomicfoundation",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 511.6,
+          "p50_ms": 513.4,
+          "p95_ms": 517.0,
+          "response": "\"ok\"",
+          "server": "juanfranblanco",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 68.7,
+          "p50_ms": 68.8,
+          "p95_ms": 69.6,
+          "response": "\"ok\"",
+          "server": "qiuxiang",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "name": "Diagnostics",
+      "servers": [
+        {
+          "mean_ms": 0.2,
+          "p50_ms": 0.2,
+          "p95_ms": 0.2,
+          "response": "no result",
+          "server": "Our LSP",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 0.2,
+          "p50_ms": 0.2,
+          "p95_ms": 0.2,
+          "response": "no result",
+          "server": "solc",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 0.3,
+          "p50_ms": 0.3,
+          "p95_ms": 0.3,
+          "response": "no result",
+          "server": "nomicfoundation",
+          "status": "ok"
+        },
+        {
+          "error": "EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "mean_ms": 0.2,
+          "p50_ms": 0.2,
+          "p95_ms": 0.3,
+          "response": "no result",
+          "server": "qiuxiang",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "name": "Go to Definition",
+      "servers": [
+        {
+          "mean_ms": 8.5,
+          "p50_ms": 8.3,
+          "p95_ms": 9.0,
+          "response": "{\"range\":{\"end\":{\"character\":8,\"line\":9},\"start\":{\"character\":8,\"line\":9}},\"uri\":\"file:///Users/meek/developer/mmsaki/so...",
+          "server": "Our LSP",
+          "status": "ok"
+        },
+        {
+          "response": "[]",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Go to Declaration",
+      "servers": [
+        {
+          "mean_ms": 8.7,
+          "p50_ms": 8.6,
+          "p95_ms": 9.3,
+          "response": "{\"range\":{\"end\":{\"character\":8,\"line\":9},\"start\":{\"character\":8,\"line\":9}},\"uri\":\"file:///Users/meek/developer/mmsaki/so...",
+          "server": "Our LSP",
+          "status": "ok"
+        },
+        {
+          "response": "error: Unknown method textDocument/declaration",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Hover",
+      "servers": [
+        {
+          "mean_ms": 13.5,
+          "p50_ms": 13.5,
+          "p95_ms": 14.2,
+          "response": "{\"contents\":{\"kind\":\"markdown\",\"value\":\"```solidity\\nlibrary TickMath\\n```\\n\\n---\\n@title Math library for computing sqr...",
+          "server": "Our LSP",
+          "status": "ok"
+        },
+        {
+          "response": "null",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Find References",
+      "servers": [
+        {
+          "mean_ms": 10.3,
+          "p50_ms": 10.4,
+          "p95_ms": 11.1,
+          "response": "[{\"range\":{\"end\":{\"character\":38,\"line\":434},\"start\":{\"character\":30,\"line\":434}},\"uri\":\"file:///Users/meek/developer/mm...",
+          "server": "Our LSP",
+          "status": "ok"
+        },
+        {
+          "response": "error: Unknown method textDocument/references",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Document Symbols",
+      "servers": [
+        {
+          "mean_ms": 8.5,
+          "p50_ms": 8.5,
+          "p95_ms": 8.7,
+          "response": "[{\"kind\":15,\"name\":\"solidity ^0.8.0\",\"range\":{\"end\":{\"character\":23,\"line\":1},\"start\":{\"character\":0,\"line\":1}},\"selecti...",
+          "server": "Our LSP",
+          "status": "ok"
+        },
+        {
+          "response": "error: Unknown method textDocument/documentSymbol",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Document Links",
+      "servers": [
+        {
+          "response": "error: Method not found",
+          "server": "Our LSP",
+          "status": "invalid"
+        },
+        {
+          "response": "error: Unknown method textDocument/documentLink",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    }
+  ],
+  "date": "2026-02-12",
+  "servers": [
+    {
+      "name": "Our LSP",
+      "version": "solidity-language-server 0.1.12+commit..macos.aarch64"
+    },
+    {
+      "name": "solc",
+      "version": "0.8.33+commit.64118f21.Darwin.appleclang"
+    },
+    {
+      "name": "nomicfoundation",
+      "version": "@nomicfoundation/solidity-language-server 0.8.25"
+    },
+    {
+      "name": "juanfranblanco",
+      "version": "vscode-solidity-server 0.0.187"
+    },
+    {
+      "name": "qiuxiang",
+      "version": "solidity-ls 0.5.4"
+    }
+  ],
+  "settings": {
+    "iterations": 10,
+    "timeout_secs": 30,
+    "warmup": 2
+  },
+  "timestamp": "2026-02-13T01:45:26Z"
+}

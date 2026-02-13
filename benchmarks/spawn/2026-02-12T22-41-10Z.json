@@ -1,0 +1,78 @@
+{
+  "benchmarks": [
+    {
+      "name": "Spawn + Init",
+      "servers": [
+        {
+          "mean_ms": 8.9,
+          "p50_ms": 8.9,
+          "p95_ms": 8.9,
+          "response": "\"ok\"",
+          "server": "Our LSP",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 121.1,
+          "p50_ms": 121.1,
+          "p95_ms": 121.1,
+          "response": "\"ok\"",
+          "server": "solc",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 862.9,
+          "p50_ms": 862.9,
+          "p95_ms": 862.9,
+          "response": "\"ok\"",
+          "server": "nomicfoundation",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 519.5,
+          "p50_ms": 519.5,
+          "p95_ms": 519.5,
+          "response": "\"ok\"",
+          "server": "juanfranblanco",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 83.1,
+          "p50_ms": 83.1,
+          "p95_ms": 83.1,
+          "response": "\"ok\"",
+          "server": "qiuxiang",
+          "status": "ok"
+        }
+      ]
+    }
+  ],
+  "date": "2026-02-12",
+  "servers": [
+    {
+      "name": "Our LSP",
+      "version": "solidity-language-server 0.1.11+commit..macos.aarch64"
+    },
+    {
+      "name": "solc",
+      "version": "0.8.33+commit.64118f21.Darwin.appleclang"
+    },
+    {
+      "name": "nomicfoundation",
+      "version": "@nomicfoundation/solidity-language-server 0.8.25"
+    },
+    {
+      "name": "juanfranblanco",
+      "version": "vscode-solidity-server 0.0.187"
+    },
+    {
+      "name": "qiuxiang",
+      "version": "unknown"
+    }
+  ],
+  "settings": {
+    "iterations": 1,
+    "timeout_secs": 30,
+    "warmup": 0
+  },
+  "timestamp": "2026-02-12T22:41:10Z"
+}

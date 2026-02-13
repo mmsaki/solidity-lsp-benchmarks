@@ -1,47 +1,38 @@
 {
   "benchmarks": [
     {
-      "name": "Spawn + Init",
+      "name": "Diagnostics",
       "servers": [
         {
-          "mean_ms": 8.9,
-          "p50_ms": 8.9,
-          "p95_ms": 8.9,
-          "response": "\"ok\"",
+          "mean_ms": 440.4,
+          "p50_ms": 441.7,
+          "p95_ms": 443.6,
+          "response": "no result",
           "server": "Our LSP",
           "status": "ok"
         },
         {
-          "mean_ms": 121.1,
-          "p50_ms": 121.1,
-          "p95_ms": 121.1,
-          "response": "\"ok\"",
+          "mean_ms": 131.3,
+          "p50_ms": 131.7,
+          "p95_ms": 135.0,
+          "response": "no result",
           "server": "solc",
           "status": "ok"
         },
         {
-          "mean_ms": 862.9,
-          "p50_ms": 862.9,
-          "p95_ms": 862.9,
-          "response": "\"ok\"",
+          "error": "timeout",
           "server": "nomicfoundation",
-          "status": "ok"
+          "status": "fail"
         },
         {
-          "mean_ms": 519.5,
-          "p50_ms": 519.5,
-          "p95_ms": 519.5,
-          "response": "\"ok\"",
+          "error": "EOF",
           "server": "juanfranblanco",
-          "status": "ok"
+          "status": "fail"
         },
         {
-          "mean_ms": 83.1,
-          "p50_ms": 83.1,
-          "p95_ms": 83.1,
-          "response": "\"ok\"",
+          "error": "timeout",
           "server": "qiuxiang",
-          "status": "ok"
+          "status": "fail"
         }
       ]
     }
@@ -50,7 +41,7 @@
   "servers": [
     {
       "name": "Our LSP",
-      "version": "solidity-language-server 0.1.11+commit..macos.aarch64"
+      "version": "solidity-language-server 0.1.13+commit.843bd50.macos.aarch64"
     },
     {
       "name": "solc",
@@ -66,13 +57,13 @@
     },
     {
       "name": "qiuxiang",
-      "version": "unknown"
+      "version": "solidity-ls 0.5.4"
     }
   ],
   "settings": {
-    "iterations": 1,
+    "iterations": 10,
     "timeout_secs": 30,
-    "warmup": 0
+    "warmup": 2
   },
-  "timestamp": "2026-02-12T22:41:10Z"
+  "timestamp": "2026-02-13T02:16:23Z"
 }
