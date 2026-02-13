@@ -1,0 +1,312 @@
+{
+  "benchmarks": [
+    {
+      "name": "Spawn + Init",
+      "servers": [
+        {
+          "mean_ms": 4.0,
+          "p50_ms": 4.0,
+          "p95_ms": 4.5,
+          "response": "\"ok\"",
+          "server": "Our LSP",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 116.5,
+          "p50_ms": 116.0,
+          "p95_ms": 119.3,
+          "response": "\"ok\"",
+          "server": "solc",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 871.3,
+          "p50_ms": 875.6,
+          "p95_ms": 907.6,
+          "response": "\"ok\"",
+          "server": "nomicfoundation",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 519.7,
+          "p50_ms": 520.0,
+          "p95_ms": 530.9,
+          "response": "\"ok\"",
+          "server": "juanfranblanco",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 67.5,
+          "p50_ms": 68.2,
+          "p95_ms": 68.9,
+          "response": "\"ok\"",
+          "server": "qiuxiang",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "name": "Diagnostics",
+      "servers": [
+        {
+          "mean_ms": 438.9,
+          "p50_ms": 439.4,
+          "p95_ms": 448.0,
+          "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"mixed-case-function\",\n      \"message\":...",
+          "server": "Our LSP",
+          "status": "ok"
+        },
+        {
+          "mean_ms": 133.7,
+          "p50_ms": 134.3,
+          "p95_ms": 135.3,
+          "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 6275,\n      \"message\": \"ParserError: So...",
+          "server": "solc",
+          "status": "ok"
+        },
+        {
+          "error": "timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Go to Definition",
+      "servers": [
+        {
+          "mean_ms": 8.6,
+          "p50_ms": 8.7,
+          "p95_ms": 9.3,
+          "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 8,\n      \"line\": 9\n    },\n    \"st...",
+          "server": "Our LSP",
+          "status": "ok"
+        },
+        {
+          "response": "[]",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Go to Declaration",
+      "servers": [
+        {
+          "mean_ms": 8.7,
+          "p50_ms": 8.9,
+          "p95_ms": 9.2,
+          "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 8,\n      \"line\": 9\n    },\n    \"st...",
+          "server": "Our LSP",
+          "status": "ok"
+        },
+        {
+          "response": "error: Unknown method textDocument/declaration",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Hover",
+      "servers": [
+        {
+          "mean_ms": 13.6,
+          "p50_ms": 13.6,
+          "p95_ms": 14.0,
+          "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",\n    \"value\": \"```solidity\\nlibrary Tic...",
+          "server": "Our LSP",
+          "status": "ok"
+        },
+        {
+          "response": "null",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Find References",
+      "servers": [
+        {
+          "mean_ms": 10.3,
+          "p50_ms": 10.3,
+          "p95_ms": 10.8,
+          "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 41,\n        \"line\": 353...",
+          "server": "Our LSP",
+          "status": "ok"
+        },
+        {
+          "response": "error: Unknown method textDocument/references",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Document Symbols",
+      "servers": [
+        {
+          "mean_ms": 8.6,
+          "p50_ms": 8.7,
+          "p95_ms": 8.9,
+          "response": "[\n  {\n    \"kind\": 15,\n    \"name\": \"solidity ^0.8.0\",\n    \"range\": {\n      \"end\":...",
+          "server": "Our LSP",
+          "status": "ok"
+        },
+        {
+          "response": "error: Unknown method textDocument/documentSymbol",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Document Links",
+      "servers": [
+        {
+          "mean_ms": 65.2,
+          "p50_ms": 65.3,
+          "p95_ms": 65.6,
+          "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 16,\n        \"line\": 3\n ...",
+          "server": "Our LSP",
+          "status": "ok"
+        },
+        {
+          "response": "error: Unknown method textDocument/documentLink",
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    }
+  ],
+  "date": "2026-02-12",
+  "servers": [
+    {
+      "name": "Our LSP",
+      "version": "solidity-language-server 0.1.13+commit.843bd50.macos.aarch64"
+    },
+    {
+      "name": "solc",
+      "version": "0.8.33+commit.64118f21.Darwin.appleclang"
+    },
+    {
+      "name": "nomicfoundation",
+      "version": "@nomicfoundation/solidity-language-server 0.8.25"
+    },
+    {
+      "name": "juanfranblanco",
+      "version": "vscode-solidity-server 0.0.187"
+    },
+    {
+      "name": "qiuxiang",
+      "version": "solidity-ls 0.5.4"
+    }
+  ],
+  "settings": {
+    "iterations": 10,
+    "timeout_secs": 30,
+    "warmup": 2
+  },
+  "timestamp": "2026-02-13T03:44:14Z"
+}
