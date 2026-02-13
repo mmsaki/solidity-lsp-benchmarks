@@ -30,6 +30,8 @@ struct Config {
     output: String,
     #[serde(default)]
     benchmarks: Vec<String>,
+    #[serde(default)]
+    readme: Option<String>,
     servers: Vec<ServerConfig>,
 }
 
@@ -925,6 +927,9 @@ output: benchmarks # directory for JSON results
 benchmarks:
   - all
 
+# Generate README after benchmarks (omit to skip)
+# readme: benchmarks/README.md
+
 # LSP servers to benchmark
 servers:
   - label: my-server
@@ -1097,6 +1102,7 @@ fn main() {
     let target_line = cfg.line;
     let target_col = cfg.col;
     let output_dir = cfg.output;
+    let readme_path = cfg.readme;
     let partial_dir = format!("{}/partial", output_dir);
 
     // Resolve which benchmarks to run from config
@@ -1353,5 +1359,24 @@ fn main() {
 
         // Clean up partial saves — the final snapshot has everything
         let _ = std::fs::remove_dir_all(&partial_dir);
+
+        // Generate README if configured
+        if let Some(ref readme) = readme_path {
+            eprintln!("  {} {}", style("readme").dim(), readme);
+            let exe = std::env::current_exe().unwrap();
+            let gen_readme = exe.parent().unwrap().join("gen-readme");
+            match std::process::Command::new(&gen_readme)
+                .args([&path, readme])
+                .status()
+            {
+                Ok(s) if s.success() => {}
+                Ok(s) => eprintln!("  {} gen-readme exited with {}", style("warn").yellow(), s),
+                Err(e) => eprintln!(
+                    "  {} gen-readme not found: {} (run cargo build --release)",
+                    style("warn").yellow(),
+                    e
+                ),
+            }
+        }
     }
 }
