@@ -1,3 +1,5 @@
+use console::style;
+use indicatif::{ProgressBar, ProgressStyle};
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
@@ -31,28 +33,23 @@ struct LspClient {
     rx: mpsc::Receiver<Value>,
     writer: std::process::ChildStdin,
     id: i64,
+    #[allow(dead_code)]
     logs: Vec<String>,
 }
 
-/// Info returned after waiting for diagnostics.
 struct DiagnosticsInfo {
-    count: usize,
-    elapsed_ms: f64,
     message: Value,
 }
 
-/// Background reader thread: reads LSP messages from stdout and sends them
-/// through a channel. This avoids blocking the main thread on read_line().
 fn reader_thread(stdout: std::process::ChildStdout, tx: mpsc::Sender<Value>) {
     let mut reader = BufReader::new(stdout);
     loop {
-        // Read headers
         let mut content_length: usize = 0;
         let mut in_header = false;
         loop {
             let mut line = String::new();
             match reader.read_line(&mut line) {
-                Ok(0) => return, // EOF
+                Ok(0) => return,
                 Ok(_) => {}
                 Err(_) => return,
             }
@@ -74,19 +71,17 @@ fn reader_thread(stdout: std::process::ChildStdout, tx: mpsc::Sender<Value>) {
                 in_header = true;
                 continue;
             }
-            // Skip garbage lines (tracing output, ANSI codes, etc.)
         }
         if content_length == 0 {
             continue;
         }
-        // Read body
         let mut body = vec![0u8; content_length];
         if reader.read_exact(&mut body).is_err() {
             return;
         }
         if let Ok(msg) = serde_json::from_slice::<Value>(&body) {
             if tx.send(msg).is_err() {
-                return; // receiver dropped
+                return;
             }
         }
     }
@@ -94,7 +89,6 @@ fn reader_thread(stdout: std::process::ChildStdout, tx: mpsc::Sender<Value>) {
 
 impl LspClient {
     fn spawn(cmd: &str, args: &[&str], cwd: &Path) -> Result<Self, String> {
-        // Resolve relative command paths to absolute before changing CWD
         let abs_cmd = if cmd.starts_with("..") || cmd.starts_with("./") {
             std::fs::canonicalize(cmd)
                 .map(|p| p.to_string_lossy().to_string())
@@ -112,10 +106,8 @@ impl LspClient {
             .map_err(|e| format!("{}: {}", cmd, e))?;
         let writer = child.stdin.take().unwrap();
         let stdout = child.stdout.take().unwrap();
-
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || reader_thread(stdout, tx));
-
         Ok(Self {
             child,
             rx,
@@ -152,7 +144,6 @@ impl LspClient {
         self.writer.flush().map_err(|e| e.to_string())
     }
 
-    /// Receive the next message with a real timeout.
     fn recv(&mut self, timeout: Duration) -> Result<Value, String> {
         self.rx.recv_timeout(timeout).map_err(|e| match e {
             mpsc::RecvTimeoutError::Timeout => "timeout".to_string(),
@@ -168,7 +159,6 @@ impl LspClient {
                 return Err("timeout".into());
             }
             let msg = self.recv(remaining)?;
-            // Capture window/logMessage notifications
             if msg.get("method").and_then(|m| m.as_str()) == Some("window/logMessage") {
                 if let Some(text) = msg
                     .get("params")
@@ -184,30 +174,21 @@ impl LspClient {
         }
     }
 
-    /// Drain messages until we see publishDiagnostics with non-empty diagnostics.
-    /// Returns the count and elapsed time. If only empty diagnostics arrive before
-    /// timeout, returns those. This is the "time to first valid diagnostics" metric.
     fn wait_for_valid_diagnostics(&mut self, timeout: Duration) -> Result<DiagnosticsInfo, String> {
         let start = Instant::now();
         let deadline = start + timeout;
         let mut last_count = 0usize;
-        let mut last_elapsed = 0.0f64;
         let mut last_msg = json!(null);
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                return if last_count > 0 || last_elapsed > 0.0 {
-                    Ok(DiagnosticsInfo {
-                        count: last_count,
-                        elapsed_ms: last_elapsed,
-                        message: last_msg,
-                    })
+                return if last_count > 0 {
+                    Ok(DiagnosticsInfo { message: last_msg })
                 } else {
-                    Err("timeout waiting for diagnostics".into())
+                    Err("timeout".into())
                 };
             }
             let msg = self.recv(remaining)?;
-            // Capture window/logMessage notifications
             if msg.get("method").and_then(|m| m.as_str()) == Some("window/logMessage") {
                 if let Some(text) = msg
                     .get("params")
@@ -225,16 +206,10 @@ impl LspClient {
                     .and_then(|d| d.as_array())
                     .map(|a| a.len())
                     .unwrap_or(0);
-                let elapsed = start.elapsed().as_secs_f64() * 1000.0;
                 last_count = count;
-                last_elapsed = elapsed;
                 last_msg = msg;
                 if count > 0 {
-                    return Ok(DiagnosticsInfo {
-                        count,
-                        elapsed_ms: elapsed,
-                        message: last_msg,
-                    });
+                    return Ok(DiagnosticsInfo { message: last_msg });
                 }
             }
         }
@@ -318,7 +293,6 @@ fn available(cmd: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Resolve symlinks to find the real binary path.
 fn resolve_binary(cmd: &str) -> Option<String> {
     let which_out = Command::new("which")
         .arg(cmd)
@@ -331,19 +305,13 @@ fn resolve_binary(cmd: &str) -> Option<String> {
     if bin_path.is_empty() {
         return None;
     }
-    // Try readlink -f (Linux) or realpath via canonicalize
     std::fs::canonicalize(&bin_path)
         .map(|p| p.to_string_lossy().to_string())
         .ok()
         .or(Some(bin_path))
 }
 
-/// Detect server version. Strategy:
-/// 1. For solc: parse `solc --version` output for the Version: line
-/// 2. For others: try `<cmd> --version` and take the first non-empty line
-/// 3. Fallback: resolve binary symlinks, walk up to find package.json
 fn detect_version(cmd: &str) -> String {
-    // Special handling for solc — its --version prints a banner
     if cmd == "solc" {
         if let Ok(output) = Command::new("solc")
             .arg("--version")
@@ -359,8 +327,6 @@ fn detect_version(cmd: &str) -> String {
             }
         }
     }
-
-    // Try --version (works for our LSP and some others)
     if let Ok(output) = Command::new(cmd)
         .arg("--version")
         .stdout(Stdio::piped())
@@ -380,8 +346,6 @@ fn detect_version(cmd: &str) -> String {
             }
         }
     }
-
-    // Fallback: resolve binary path (following symlinks) and find package.json
     if let Some(real_path) = resolve_binary(cmd) {
         let mut dir = Path::new(&real_path).to_path_buf();
         for _ in 0..10 {
@@ -402,8 +366,6 @@ fn detect_version(cmd: &str) -> String {
             }
         }
     }
-
-    // Fallback for volta/npm: try `npm info <cmd> version`
     if let Ok(output) = Command::new("npm")
         .args(["info", cmd, "version"])
         .stdout(Stdio::piped())
@@ -417,13 +379,10 @@ fn detect_version(cmd: &str) -> String {
             }
         }
     }
-
     "unknown".to_string()
 }
 
-type Type<'a> = &'a mut Vec<f64>;
-
-fn stats(samples: Type) -> (f64, f64, f64) {
+fn stats(samples: &mut Vec<f64>) -> (f64, f64, f64) {
     samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let n = samples.len();
     (
@@ -433,7 +392,6 @@ fn stats(samples: Type) -> (f64, f64, f64) {
     )
 }
 
-/// Check if an LSP response is valid (has a non-null, non-error result).
 fn is_valid_response(resp: &Value) -> bool {
     if resp.get("error").is_some() {
         return false;
@@ -452,7 +410,6 @@ fn is_valid_response(resp: &Value) -> bool {
     }
 }
 
-/// Format a response snippet for display.
 fn response_summary(resp: &Value) -> String {
     if let Some(err) = resp.get("error") {
         return format!(
@@ -462,7 +419,6 @@ fn response_summary(resp: &Value) -> String {
                 .unwrap_or("unknown")
         );
     }
-    // Handle JSON-RPC responses (have "result") or notifications (have "params")
     let payload = resp.get("result").or_else(|| resp.get("params"));
     if let Some(r) = payload {
         if r.is_null() {
@@ -517,14 +473,13 @@ const SERVERS: &[Server] = &[
 // ── Bench result per server ─────────────────────────────────────────────────
 
 enum BenchResult {
-    /// Valid result with samples and first response
     Ok {
         samples: Vec<f64>,
         first_response: Value,
     },
-    /// Bench ran but response was null/error — invalidated
-    Invalid { first_response: Value },
-    /// Bench failed to run at all
+    Invalid {
+        first_response: Value,
+    },
     Fail(String),
 }
 
@@ -533,7 +488,7 @@ struct BenchRow {
     p50: f64,
     p95: f64,
     mean: f64,
-    kind: u8, // 0=ok, 1=invalid, 2=fail
+    kind: u8,
     fail_msg: String,
     summary: String,
 }
@@ -563,21 +518,211 @@ impl BenchRow {
     }
 }
 
-fn run_bench<F>(servers: &[&Server], root: &str, cwd: &Path, f: F) -> Vec<BenchRow>
+// ── Progress ────────────────────────────────────────────────────────────────
+
+fn spinner(label: &str) -> ProgressBar {
+    let pb = ProgressBar::new_spinner();
+    pb.set_style(
+        ProgressStyle::with_template("  {spinner:.cyan} {prefix:<20} {msg}")
+            .unwrap()
+            .tick_chars("🌑🌒🌓🌔🌕🌖🌗🌘 "),
+    );
+    pb.set_prefix(label.to_string());
+    pb.enable_steady_tick(Duration::from_millis(80));
+    pb
+}
+
+fn finish_pass(pb: &ProgressBar, mean: f64, p50: f64, p95: f64) {
+    pb.finish_with_message(format!(
+        "{}  {:.1}ms mean  ({:.1}ms p50, {:.1}ms p95)",
+        style("pass").green().bold(),
+        mean,
+        p50,
+        p95
+    ));
+}
+
+fn finish_fail(pb: &ProgressBar, msg: &str) {
+    pb.finish_with_message(format!("{}  {}", style("fail").red().bold(), msg));
+}
+
+fn iter_msg(i: usize, w: usize, n: usize) -> String {
+    if i < w {
+        format!("warmup {}/{}", i + 1, w)
+    } else {
+        format!("iter {}/{}", i - w + 1, n)
+    }
+}
+
+// ── Reusable benchmark runners ──────────────────────────────────────────────
+
+/// Benchmark that spawns a fresh server each iteration (e.g. spawn+init).
+fn bench_spawn(
+    srv: &Server,
+    root: &str,
+    cwd: &Path,
+    w: usize,
+    n: usize,
+    on_progress: &dyn Fn(&str),
+) -> BenchResult {
+    let mut samples = Vec::new();
+    for i in 0..(w + n) {
+        on_progress(&iter_msg(i, w, n));
+        let start = Instant::now();
+        let mut c = match LspClient::spawn(srv.cmd, srv.args, cwd) {
+            Ok(c) => c,
+            Err(e) => return BenchResult::Fail(e),
+        };
+        if let Err(e) = c.initialize(root) {
+            return BenchResult::Fail(e);
+        }
+        let ms = start.elapsed().as_secs_f64() * 1000.0;
+        on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
+        if i >= w {
+            samples.push(ms);
+        }
+        c.kill();
+    }
+    BenchResult::Ok {
+        samples,
+        first_response: json!({"result": "ok"}),
+    }
+}
+
+/// Benchmark that spawns fresh each iteration, measures didOpen -> diagnostics.
+fn bench_diagnostics(
+    srv: &Server,
+    root: &str,
+    cwd: &Path,
+    pool_sol: &Path,
+    timeout: Duration,
+    w: usize,
+    n: usize,
+    on_progress: &dyn Fn(&str),
+) -> BenchResult {
+    let mut samples = Vec::new();
+    let mut first: Option<DiagnosticsInfo> = None;
+    for i in 0..(w + n) {
+        on_progress(&format!("{}  waiting for diagnostics", iter_msg(i, w, n)));
+        let mut c = match LspClient::spawn(srv.cmd, srv.args, cwd) {
+            Ok(c) => c,
+            Err(e) => return BenchResult::Fail(e),
+        };
+        if let Err(e) = c.initialize(root) {
+            return BenchResult::Fail(e);
+        }
+        let start = Instant::now();
+        if let Err(e) = c.open_file(pool_sol) {
+            return BenchResult::Fail(e);
+        }
+        match c.wait_for_valid_diagnostics(timeout) {
+            Ok(diag_info) => {
+                let ms = start.elapsed().as_secs_f64() * 1000.0;
+                on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
+                if i >= w {
+                    samples.push(ms);
+                }
+                if first.is_none() {
+                    first = Some(diag_info);
+                }
+            }
+            Err(e) => return BenchResult::Fail(e),
+        }
+        c.kill();
+    }
+    let diag = first.unwrap_or(DiagnosticsInfo {
+        message: json!(null),
+    });
+    BenchResult::Ok {
+        samples,
+        first_response: diag.message,
+    }
+}
+
+/// Benchmark an LSP method on a single persistent server session.
+/// Spawns once, waits for diagnostics, then iterates the given method.
+fn bench_lsp_method(
+    srv: &Server,
+    root: &str,
+    cwd: &Path,
+    pool_sol: &Path,
+    method: &str,
+    params_fn: &dyn Fn(&str) -> Value, // takes file_uri, returns params
+    index_timeout: Duration,
+    timeout: Duration,
+    w: usize,
+    n: usize,
+    on_progress: &dyn Fn(&str),
+) -> BenchResult {
+    on_progress("spawning");
+    let mut c = match LspClient::spawn(srv.cmd, srv.args, cwd) {
+        Ok(c) => c,
+        Err(e) => return BenchResult::Fail(e),
+    };
+    if let Err(e) = c.initialize(root) {
+        return BenchResult::Fail(e);
+    }
+    if let Err(e) = c.open_file(pool_sol) {
+        return BenchResult::Fail(e);
+    }
+    on_progress("waiting for diagnostics");
+    match c.wait_for_valid_diagnostics(index_timeout) {
+        Ok(_) => {}
+        Err(e) => return BenchResult::Fail(format!("wait_for_diagnostics: {}", e)),
+    }
+
+    let file_uri = uri(pool_sol);
+    let mut samples = Vec::new();
+    let mut first: Option<Value> = None;
+    for i in 0..(w + n) {
+        on_progress(&iter_msg(i, w, n));
+        let start = Instant::now();
+        if let Err(e) = c.send(method, params_fn(&file_uri)) {
+            return BenchResult::Fail(e);
+        }
+        match c.read_response(timeout) {
+            Ok(resp) => {
+                let ms = start.elapsed().as_secs_f64() * 1000.0;
+                on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
+                if i >= w {
+                    if first.is_none() {
+                        first = Some(resp.clone());
+                    }
+                    if !is_valid_response(&resp) {
+                        return BenchResult::Invalid {
+                            first_response: resp,
+                        };
+                    }
+                    samples.push(ms);
+                }
+            }
+            Err(e) => return BenchResult::Fail(e),
+        }
+    }
+    c.kill();
+    BenchResult::Ok {
+        samples,
+        first_response: first.unwrap_or(json!(null)),
+    }
+}
+
+/// Run a benchmark across all servers, showing a spinner per server.
+fn run_bench<F>(servers: &[&Server], f: F) -> Vec<BenchRow>
 where
-    F: Fn(&Server, &str, &Path) -> BenchResult,
+    F: Fn(&Server, &dyn Fn(&str)) -> BenchResult,
 {
-    let mut rows: Vec<BenchRow> = Vec::new();
+    let mut rows = Vec::new();
     for srv in servers {
-        eprint!("  {} ... ", srv.label);
-        match f(srv, root, cwd) {
+        let pb = spinner(srv.label);
+        let on_progress = |msg: &str| pb.set_message(msg.to_string());
+        match f(srv, &on_progress) {
             BenchResult::Ok {
                 mut samples,
                 first_response,
             } => {
                 let (p50, p95, mean) = stats(&mut samples);
                 let summary = response_summary(&first_response);
-                eprintln!("done");
+                finish_pass(&pb, mean, p50, p95);
                 rows.push(BenchRow {
                     label: srv.label.to_string(),
                     p50,
@@ -590,7 +735,7 @@ where
             }
             BenchResult::Invalid { first_response } => {
                 let summary = response_summary(&first_response);
-                eprintln!("invalid");
+                finish_fail(&pb, "invalid response");
                 rows.push(BenchRow {
                     label: srv.label.to_string(),
                     p50: 0.0,
@@ -602,7 +747,7 @@ where
                 });
             }
             BenchResult::Fail(e) => {
-                eprintln!("fail");
+                finish_fail(&pb, &e);
                 rows.push(BenchRow {
                     label: srv.label.to_string(),
                     p50: 0.0,
@@ -616,6 +761,51 @@ where
         }
     }
     rows
+}
+
+// ── JSON output ─────────────────────────────────────────────────────────────
+
+fn save_json(
+    results: &[(&str, Vec<BenchRow>)],
+    versions: &[(&str, String)],
+    n: usize,
+    w: usize,
+    timeout: &Duration,
+    index_timeout: &Duration,
+    dir: &str,
+) -> String {
+    let ts = timestamp();
+    let date = date_stamp();
+    let json_benchmarks: Vec<Value> = results
+        .iter()
+        .map(|(name, rows)| {
+            json!({
+                "name": name,
+                "servers": rows.iter().map(|r| r.to_json()).collect::<Vec<_>>(),
+            })
+        })
+        .collect();
+    let json_servers: Vec<Value> = versions
+        .iter()
+        .map(|(label, ver)| json!({"name": label, "version": ver}))
+        .collect();
+    let output = json!({
+        "timestamp": ts,
+        "date": date,
+        "settings": {
+            "iterations": n,
+            "warmup": w,
+            "timeout_secs": timeout.as_secs(),
+            "index_timeout_secs": index_timeout.as_secs(),
+        },
+        "servers": json_servers,
+        "benchmarks": json_benchmarks,
+    });
+    let _ = std::fs::create_dir_all(dir);
+    let path = format!("{}/{}.json", dir, ts.replace(':', "-"));
+    let pretty = serde_json::to_string_pretty(&output).unwrap();
+    std::fs::write(&path, &pretty).unwrap();
+    path
 }
 
 // ── Main ────────────────────────────────────────────────────────────────────
@@ -635,36 +825,31 @@ fn print_usage() {
     eprintln!("Usage: bench [OPTIONS] <COMMAND>");
     eprintln!();
     eprintln!("Commands:");
-    eprintln!("  all            — run all benchmarks");
-    eprintln!("  spawn          — spawn + initialize handshake");
-    eprintln!("  diagnostics    — open Pool.sol, time to first diagnostic");
-    eprintln!("  definition     — go-to-definition on TickMath in Pool.sol");
-    eprintln!("  declaration    — go-to-declaration on TickMath in Pool.sol");
-    eprintln!("  hover          — hover on TickMath in Pool.sol");
-    eprintln!("  references     — find references on TickMath in Pool.sol");
-    eprintln!("  documentSymbol — get document symbols for Pool.sol");
-    eprintln!("  documentLink   — get document links for Pool.sol");
+    eprintln!("  all            -- run all benchmarks");
+    eprintln!("  spawn          -- spawn + initialize handshake");
+    eprintln!("  diagnostics    -- open Pool.sol, time to first diagnostic");
+    eprintln!("  definition     -- go-to-definition on TickMath in Pool.sol");
+    eprintln!("  declaration    -- go-to-declaration on TickMath in Pool.sol");
+    eprintln!("  hover          -- hover on TickMath in Pool.sol");
+    eprintln!("  references     -- find references on TickMath in Pool.sol");
+    eprintln!("  documentSymbol -- get document symbols for Pool.sol");
+    eprintln!("  documentLink   -- get document links for Pool.sol");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  -n, --iterations <N>  Number of measured iterations (default: 10)");
     eprintln!("  -w, --warmup <N>      Number of warmup iterations (default: 2)");
-    eprintln!("  -t, --timeout <SECS>  Timeout per request in seconds (default: 30)");
-    eprintln!("  -h, --help            Show this help message");
-    eprintln!();
-    eprintln!("Examples:");
-    eprintln!("  bench all                  Run all benchmarks");
-    eprintln!("  bench all -n 1 -w 0        Run all benchmarks once, no warmup");
-    eprintln!("  bench diagnostics -n 5     Run diagnostics with 5 iterations");
-    eprintln!("  bench all -t 10            Run all benchmarks with 10s timeout");
+    eprintln!("  -t, --timeout <SECS>         Timeout per request in seconds (default: 10)");
+    eprintln!("  -T, --index-timeout <SECS>   Time for server to index/warm up (default: 15)");
+    eprintln!("  -h, --help                   Show this help message");
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    // Parse flags
     let mut n: usize = 10;
     let mut w: usize = 2;
-    let mut timeout_secs: u64 = 30;
+    let mut timeout_secs: u64 = 10;
+    let mut index_timeout_secs: u64 = 15;
     let mut commands: Vec<String> = Vec::new();
 
     let mut i = 1;
@@ -695,32 +880,36 @@ fn main() {
                     std::process::exit(1);
                 });
             }
-            other => {
-                commands.push(other.to_string());
+            "-T" | "--index-timeout" => {
+                i += 1;
+                index_timeout_secs =
+                    args.get(i).and_then(|v| v.parse().ok()).unwrap_or_else(|| {
+                        eprintln!("Error: -T requires a number (seconds)");
+                        std::process::exit(1);
+                    });
             }
+            other => commands.push(other.to_string()),
         }
         i += 1;
     }
 
     let timeout = Duration::from_secs(timeout_secs);
+    let index_timeout = Duration::from_secs(index_timeout_secs);
 
     if commands.is_empty() {
         print_usage();
         std::process::exit(1);
     }
 
-    // Expand "all" into every benchmark
     let benchmarks: Vec<&str> = if commands.iter().any(|c| c == "all") {
         ALL_BENCHMARKS.to_vec()
     } else {
         commands.iter().map(|s| s.as_str()).collect()
     };
 
-    // Validate commands
     for b in &benchmarks {
         if !ALL_BENCHMARKS.contains(b) {
             eprintln!("Error: unknown benchmark '{}'", b);
-            eprintln!();
             print_usage();
             std::process::exit(1);
         }
@@ -733,608 +922,197 @@ fn main() {
             eprintln!("v4-core not found");
             std::process::exit(1);
         });
-    let root = uri(Path::new(v4));
+    let cwd = Path::new(v4);
+    let root = uri(cwd);
+    let pool_sol = cwd.join("src/libraries/Pool.sol");
 
     let avail: Vec<&Server> = SERVERS
         .iter()
         .filter(|s| {
             let ok = available(s.cmd);
             if !ok {
-                eprintln!("  SKIP {} — not found", s.label);
+                eprintln!("  {} {} -- not found", style("skip").yellow(), s.label);
             }
             ok
         })
         .collect();
 
-    // Detect versions for available servers
-    eprintln!("Detecting server versions...");
+    eprintln!("\n{}", style("Detecting versions...").dim());
     let versions: Vec<(&str, String)> = avail
         .iter()
         .map(|s| {
             let ver = detect_version(s.cmd);
-            eprintln!("  {} = {}", s.label, ver);
+            eprintln!("  {} = {}", style(s.label).bold(), ver);
             (s.label, ver)
         })
         .collect();
 
+    let total = benchmarks.len();
+    let mut num = 0usize;
     let mut all_results: Vec<(&str, Vec<BenchRow>)> = Vec::new();
 
-    // ── spawn ───────────────────────────────────────────────────────────────
+    // Position + method params for definition/declaration/hover/references
+    let target_line: u32 = 102;
+    let target_col: u32 = 15;
+    let position_params = |file_uri: &str| -> Value {
+        json!({
+            "textDocument": { "uri": file_uri },
+            "position": { "line": target_line, "character": target_col },
+        })
+    };
+    let doc_params = |file_uri: &str| -> Value { json!({ "textDocument": { "uri": file_uri } }) };
+    let ref_params = |file_uri: &str| -> Value {
+        json!({
+            "textDocument": { "uri": file_uri },
+            "position": { "line": target_line, "character": target_col },
+            "context": { "includeDeclaration": true },
+        })
+    };
+
+    // (command, display_name, lsp_method, params_fn)
+    let method_benchmarks: Vec<(&str, &str, &str, &dyn Fn(&str) -> Value)> = vec![
+        (
+            "definition",
+            "Go to Definition",
+            "textDocument/definition",
+            &position_params,
+        ),
+        (
+            "declaration",
+            "Go to Declaration",
+            "textDocument/declaration",
+            &position_params,
+        ),
+        ("hover", "Hover", "textDocument/hover", &position_params),
+        (
+            "references",
+            "Find References",
+            "textDocument/references",
+            &ref_params,
+        ),
+        (
+            "documentSymbol",
+            "Document Symbols",
+            "textDocument/documentSymbol",
+            &doc_params,
+        ),
+        (
+            "documentLink",
+            "Document Links",
+            "textDocument/documentLink",
+            &doc_params,
+        ),
+    ];
+
+    // ── spawn ────────────────────────────────────────────────────────────
 
     if benchmarks.contains(&"spawn") {
-        let rows = run_bench(&avail, &root, Path::new(v4), |srv, root, cwd| {
-            let mut samples = Vec::new();
-            for i in 0..(w + n) {
-                let start = Instant::now();
-                let mut c = match LspClient::spawn(srv.cmd, srv.args, cwd) {
-                    Ok(c) => c,
-                    Err(e) => return BenchResult::Fail(e),
-                };
-                if let Err(e) = c.initialize(root) {
-                    return BenchResult::Fail(e);
-                }
-                let ms = start.elapsed().as_secs_f64() * 1000.0;
-                if i >= w {
-                    samples.push(ms);
-                }
-                c.kill();
-            }
-            BenchResult::Ok {
-                samples,
-                first_response: json!({"result": "ok"}),
-            }
+        num += 1;
+        eprintln!(
+            "\n{}",
+            style(format!("[{}/{}] Spawn + Init", num, total)).bold()
+        );
+        let rows = run_bench(&avail, |srv, on_progress| {
+            bench_spawn(srv, &root, cwd, w, n, on_progress)
         });
         all_results.push(("Spawn + Init", rows));
+        let p = save_json(
+            &all_results,
+            &versions,
+            n,
+            w,
+            &timeout,
+            &index_timeout,
+            "benchmarks/partial",
+        );
+        eprintln!("  {} {}", style("saved").dim(), style(&p).dim());
     }
 
-    // ── diagnostics ─────────────────────────────────────────────────────────
+    // ── diagnostics ──────────────────────────────────────────────────────
 
     if benchmarks.contains(&"diagnostics") {
-        let pool_sol = Path::new(v4).join("src/libraries/Pool.sol");
-        let rows = run_bench(&avail, &root, Path::new(v4), |srv, root, cwd| {
-            let mut samples = Vec::new();
-            let mut first: Option<DiagnosticsInfo> = None;
-            for i in 0..(w + n) {
-                let mut c = match LspClient::spawn(srv.cmd, srv.args, cwd) {
-                    Ok(c) => c,
-                    Err(e) => return BenchResult::Fail(e),
-                };
-                if let Err(e) = c.initialize(root) {
-                    return BenchResult::Fail(e);
-                }
-                let start = Instant::now();
-                if let Err(e) = c.open_file(&pool_sol) {
-                    return BenchResult::Fail(e);
-                }
-                match c.wait_for_valid_diagnostics(timeout) {
-                    Ok(diag_info) => {
-                        let ms = start.elapsed().as_secs_f64() * 1000.0;
-                        if i >= w {
-                            samples.push(ms);
-                        }
-                        if first.is_none() {
-                            first = Some(diag_info);
-                        }
-                    }
-                    Err(e) => return BenchResult::Fail(e),
-                }
-                c.kill();
-            }
-            let diag_info = first.unwrap_or(DiagnosticsInfo {
-                count: 0,
-                elapsed_ms: 0.0,
-                message: json!(null),
-            });
-            BenchResult::Ok {
-                samples,
-                first_response: diag_info.message.clone(),
-            }
+        num += 1;
+        eprintln!(
+            "\n{}",
+            style(format!("[{}/{}] Diagnostics", num, total)).bold()
+        );
+        let rows = run_bench(&avail, |srv, on_progress| {
+            bench_diagnostics(srv, &root, cwd, &pool_sol, index_timeout, w, n, on_progress)
         });
         all_results.push(("Diagnostics", rows));
+        let p = save_json(
+            &all_results,
+            &versions,
+            n,
+            w,
+            &timeout,
+            &index_timeout,
+            "benchmarks/partial",
+        );
+        eprintln!("  {} {}", style("saved").dim(), style(&p).dim());
     }
 
-    // ── definition ──────────────────────────────────────────────────────────
+    // ── all LSP method benchmarks (definition, declaration, hover, etc.) ─
 
-    if benchmarks.contains(&"definition") {
-        let pool_sol = Path::new(v4).join("src/libraries/Pool.sol");
-
-        let target_line: u32 = 102;
-        let target_col: u32 = 15;
-
-        let rows = run_bench(&avail, &root, Path::new(v4), |srv, root, cwd| {
-            let mut c = match LspClient::spawn(srv.cmd, srv.args, cwd) {
-                Ok(c) => c,
-                Err(e) => return BenchResult::Fail(e),
-            };
-            if let Err(e) = c.initialize(root) {
-                return BenchResult::Fail(e);
-            }
-            if let Err(e) = c.open_file(&pool_sol) {
-                return BenchResult::Fail(e);
-            }
-
-            // Wait for valid diagnostics (build complete)
-            let diag_info = match c.wait_for_valid_diagnostics(timeout) {
-                Ok(info) => info,
-                Err(e) => return BenchResult::Fail(format!("wait_for_diagnostics: {}", e)),
-            };
+    for (cmd, display_name, method, params_fn) in &method_benchmarks {
+        if benchmarks.contains(cmd) {
+            num += 1;
             eprintln!(
-                "diagnostics: {} items in {:.0}ms ... ",
-                diag_info.count, diag_info.elapsed_ms
+                "\n{}",
+                style(format!("[{}/{}] {}", num, total, display_name)).bold()
             );
-            eprint!("    ");
-
-            let file_uri = uri(&pool_sol);
-            let mut samples = Vec::new();
-            let mut first: Option<Value> = None;
-            for i in 0..(w + n) {
-                let start = Instant::now();
-                if let Err(e) = c.send(
-                    "textDocument/definition",
-                    json!({
-                        "textDocument": { "uri": file_uri },
-                        "position": { "line": target_line, "character": target_col },
-                    }),
-                ) {
-                    return BenchResult::Fail(e);
-                }
-                match c.read_response(timeout) {
-                    Ok(resp) => {
-                        let ms = start.elapsed().as_secs_f64() * 1000.0;
-                        if i >= w {
-                            if first.is_none() {
-                                first = Some(resp.clone());
-                            }
-                            if !is_valid_response(&resp) {
-                                // Dump server logs for debugging
-                                if !c.logs.is_empty() {
-                                    eprintln!("\n--- {} server logs ---", srv.label);
-                                    for line in &c.logs {
-                                        eprintln!("  {}", line);
-                                    }
-                                    eprintln!("--- end ---");
-                                }
-                                return BenchResult::Invalid {
-                                    first_response: resp,
-                                };
-                            }
-                            samples.push(ms);
-                        }
-                    }
-                    Err(e) => return BenchResult::Fail(e),
-                }
-            }
-            c.kill();
-            BenchResult::Ok {
-                samples,
-                first_response: first.unwrap_or(json!(null)),
-            }
-        });
-        all_results.push(("Go to Definition", rows));
+            let rows = run_bench(&avail, |srv, on_progress| {
+                bench_lsp_method(
+                    srv,
+                    &root,
+                    cwd,
+                    &pool_sol,
+                    method,
+                    *params_fn,
+                    index_timeout,
+                    timeout,
+                    w,
+                    n,
+                    on_progress,
+                )
+            });
+            all_results.push((display_name, rows));
+            let p = save_json(
+                &all_results,
+                &versions,
+                n,
+                w,
+                &timeout,
+                &index_timeout,
+                "benchmarks/partial",
+            );
+            eprintln!("  {} {}", style("saved").dim(), style(&p).dim());
+        }
     }
 
-    // ── declaration ─────────────────────────────────────────────────────────
-
-    if benchmarks.contains(&"declaration") {
-        let pool_sol = Path::new(v4).join("src/libraries/Pool.sol");
-
-        let target_line: u32 = 102;
-        let target_col: u32 = 15;
-
-        let rows = run_bench(&avail, &root, Path::new(v4), |srv, root, cwd| {
-            let mut c = match LspClient::spawn(srv.cmd, srv.args, cwd) {
-                Ok(c) => c,
-                Err(e) => return BenchResult::Fail(e),
-            };
-            if let Err(e) = c.initialize(root) {
-                return BenchResult::Fail(e);
-            }
-            if let Err(e) = c.open_file(&pool_sol) {
-                return BenchResult::Fail(e);
-            }
-
-            // Wait for valid diagnostics (build complete)
-            let diag_info = match c.wait_for_valid_diagnostics(timeout) {
-                Ok(info) => info,
-                Err(e) => return BenchResult::Fail(format!("wait_for_diagnostics: {}", e)),
-            };
-            eprintln!(
-                "diagnostics: {} items in {:.0}ms ... ",
-                diag_info.count, diag_info.elapsed_ms
-            );
-            eprint!("    ");
-
-            let file_uri = uri(&pool_sol);
-            let mut samples = Vec::new();
-            let mut first: Option<Value> = None;
-            for i in 0..(w + n) {
-                let start = Instant::now();
-                if let Err(e) = c.send(
-                    "textDocument/declaration",
-                    json!({
-                        "textDocument": { "uri": file_uri },
-                        "position": { "line": target_line, "character": target_col },
-                    }),
-                ) {
-                    return BenchResult::Fail(e);
-                }
-                match c.read_response(timeout) {
-                    Ok(resp) => {
-                        let ms = start.elapsed().as_secs_f64() * 1000.0;
-                        if i >= w {
-                            if first.is_none() {
-                                first = Some(resp.clone());
-                            }
-                            if !is_valid_response(&resp) {
-                                // Dump server logs for debugging
-                                if !c.logs.is_empty() {
-                                    eprintln!("\n--- {} server logs ---", srv.label);
-                                    for line in &c.logs {
-                                        eprintln!("  {}", line);
-                                    }
-                                    eprintln!("--- end ---");
-                                }
-                                return BenchResult::Invalid {
-                                    first_response: resp,
-                                };
-                            }
-                            samples.push(ms);
-                        }
-                    }
-                    Err(e) => return BenchResult::Fail(e),
-                }
-            }
-            c.kill();
-            BenchResult::Ok {
-                samples,
-                first_response: first.unwrap_or(json!(null)),
-            }
-        });
-        all_results.push(("Go to Declaration", rows));
-    }
-
-    // ── hover ─────────────────────────────────────────────────────────
-
-    if benchmarks.contains(&"hover") {
-        let pool_sol = Path::new(v4).join("src/libraries/Pool.sol");
-
-        let target_line: u32 = 102;
-        let target_col: u32 = 15;
-
-        let rows = run_bench(&avail, &root, Path::new(v4), |srv, root, cwd| {
-            let mut c = match LspClient::spawn(srv.cmd, srv.args, cwd) {
-                Ok(c) => c,
-                Err(e) => return BenchResult::Fail(e),
-            };
-            if let Err(e) = c.initialize(root) {
-                return BenchResult::Fail(e);
-            }
-            if let Err(e) = c.open_file(&pool_sol) {
-                return BenchResult::Fail(e);
-            }
-
-            // Wait for valid diagnostics (build complete)
-            let diag_info = match c.wait_for_valid_diagnostics(timeout) {
-                Ok(info) => info,
-                Err(e) => return BenchResult::Fail(format!("wait_for_diagnostics: {}", e)),
-            };
-            eprintln!(
-                "diagnostics: {} items in {:.0}ms ... ",
-                diag_info.count, diag_info.elapsed_ms
-            );
-            eprint!("    ");
-
-            let file_uri = uri(&pool_sol);
-            let mut samples = Vec::new();
-            let mut first: Option<Value> = None;
-            for i in 0..(w + n) {
-                let start = Instant::now();
-                if let Err(e) = c.send(
-                    "textDocument/hover",
-                    json!({
-                        "textDocument": { "uri": file_uri },
-                        "position": { "line": target_line, "character": target_col },
-                    }),
-                ) {
-                    return BenchResult::Fail(e);
-                }
-                match c.read_response(timeout) {
-                    Ok(resp) => {
-                        let ms = start.elapsed().as_secs_f64() * 1000.0;
-                        if i >= w {
-                            if first.is_none() {
-                                first = Some(resp.clone());
-                            }
-                            if !is_valid_response(&resp) {
-                                return BenchResult::Invalid {
-                                    first_response: resp,
-                                };
-                            }
-                            samples.push(ms);
-                        }
-                    }
-                    Err(e) => {
-                        return BenchResult::Fail(e);
-                    }
-                }
-            }
-            c.kill();
-            BenchResult::Ok {
-                samples,
-                first_response: first.unwrap_or(json!(null)),
-            }
-        });
-        all_results.push(("Hover", rows));
-    }
-
-    // ── references ─────────────────────────────────────────────────────────
-
-    if benchmarks.contains(&"references") {
-        let pool_sol = Path::new(v4).join("src/libraries/Pool.sol");
-
-        let target_line: u32 = 102;
-        let target_col: u32 = 15;
-
-        let rows = run_bench(&avail, &root, Path::new(v4), |srv, root, cwd| {
-            let mut c = match LspClient::spawn(srv.cmd, srv.args, cwd) {
-                Ok(c) => c,
-                Err(e) => return BenchResult::Fail(e),
-            };
-            if let Err(e) = c.initialize(root) {
-                return BenchResult::Fail(e);
-            }
-            if let Err(e) = c.open_file(&pool_sol) {
-                return BenchResult::Fail(e);
-            }
-
-            // Wait for valid diagnostics (build complete)
-            let diag_info = match c.wait_for_valid_diagnostics(timeout) {
-                Ok(info) => info,
-                Err(e) => return BenchResult::Fail(format!("wait_for_diagnostics: {}", e)),
-            };
-            eprintln!(
-                "diagnostics: {} items in {:.0}ms ... ",
-                diag_info.count, diag_info.elapsed_ms
-            );
-            eprint!("    ");
-
-            let file_uri = uri(&pool_sol);
-            let mut samples = Vec::new();
-            let mut first: Option<Value> = None;
-            for i in 0..(w + n) {
-                let start = Instant::now();
-                if let Err(e) = c.send(
-                    "textDocument/references",
-                    json!({
-                        "textDocument": { "uri": file_uri },
-                        "position": { "line": target_line, "character": target_col },
-                        "context": { "includeDeclaration": true }
-                    }),
-                ) {
-                    return BenchResult::Fail(e);
-                }
-                match c.read_response(timeout) {
-                    Ok(resp) => {
-                        let ms = start.elapsed().as_secs_f64() * 1000.0;
-                        if i >= w {
-                            if first.is_none() {
-                                first = Some(resp.clone());
-                            }
-                            if !is_valid_response(&resp) {
-                                return BenchResult::Invalid {
-                                    first_response: resp,
-                                };
-                            }
-                            samples.push(ms);
-                        }
-                    }
-                    Err(e) => {
-                        return BenchResult::Fail(e);
-                    }
-                }
-            }
-            c.kill();
-            BenchResult::Ok {
-                samples,
-                first_response: first.unwrap_or(json!(null)),
-            }
-        });
-        all_results.push(("Find References", rows));
-    }
-
-    // ── documentSymbol ─────────────────────────────────────────────────────────
-
-    if benchmarks.contains(&"documentSymbol") {
-        let pool_sol = Path::new(v4).join("src/libraries/Pool.sol");
-
-        let rows = run_bench(&avail, &root, Path::new(v4), |srv, root, cwd| {
-            let mut c = match LspClient::spawn(srv.cmd, srv.args, cwd) {
-                Ok(c) => c,
-                Err(e) => return BenchResult::Fail(e),
-            };
-            if let Err(e) = c.initialize(root) {
-                return BenchResult::Fail(e);
-            }
-            if let Err(e) = c.open_file(&pool_sol) {
-                return BenchResult::Fail(e);
-            }
-
-            // Wait for valid diagnostics (build complete)
-            let diag_info = match c.wait_for_valid_diagnostics(timeout) {
-                Ok(info) => info,
-                Err(e) => return BenchResult::Fail(format!("wait_for_diagnostics: {}", e)),
-            };
-            eprintln!(
-                "diagnostics: {} items in {:.0}ms ... ",
-                diag_info.count, diag_info.elapsed_ms
-            );
-            eprint!("    ");
-
-            let file_uri = uri(&pool_sol);
-            let mut samples = Vec::new();
-            let mut first: Option<Value> = None;
-            for i in 0..(w + n) {
-                let start = Instant::now();
-                if let Err(e) = c.send(
-                    "textDocument/documentSymbol",
-                    json!({
-                        "textDocument": { "uri": file_uri }
-                    }),
-                ) {
-                    return BenchResult::Fail(e);
-                }
-                match c.read_response(timeout) {
-                    Ok(resp) => {
-                        let ms = start.elapsed().as_secs_f64() * 1000.0;
-                        if i >= w {
-                            if first.is_none() {
-                                first = Some(resp.clone());
-                            }
-                            if !is_valid_response(&resp) {
-                                return BenchResult::Invalid {
-                                    first_response: resp,
-                                };
-                            }
-                            samples.push(ms);
-                        }
-                    }
-                    Err(e) => {
-                        return BenchResult::Fail(e);
-                    }
-                }
-            }
-            c.kill();
-            BenchResult::Ok {
-                samples,
-                first_response: first.unwrap_or(json!(null)),
-            }
-        });
-        all_results.push(("Document Symbols", rows));
-    }
-
-    // ── documentLink ─────────────────────────────────────────────────────────
-
-    if benchmarks.contains(&"documentLink") {
-        let pool_sol = Path::new(v4).join("src/libraries/Pool.sol");
-
-        let rows = run_bench(&avail, &root, Path::new(v4), |srv, root, cwd| {
-            let mut c = match LspClient::spawn(srv.cmd, srv.args, cwd) {
-                Ok(c) => c,
-                Err(e) => return BenchResult::Fail(e),
-            };
-            if let Err(e) = c.initialize(root) {
-                return BenchResult::Fail(e);
-            }
-            if let Err(e) = c.open_file(&pool_sol) {
-                return BenchResult::Fail(e);
-            }
-
-            // Wait for valid diagnostics (build complete)
-            let diag_info = match c.wait_for_valid_diagnostics(timeout) {
-                Ok(info) => info,
-                Err(e) => return BenchResult::Fail(format!("wait_for_diagnostics: {}", e)),
-            };
-            eprintln!(
-                "diagnostics: {} items in {:.0}ms ... ",
-                diag_info.count, diag_info.elapsed_ms
-            );
-            eprint!("    ");
-
-            let file_uri = uri(&pool_sol);
-            let mut samples = Vec::new();
-            let mut first: Option<Value> = None;
-            for i in 0..(w + n) {
-                let start = Instant::now();
-                if let Err(e) = c.send(
-                    "textDocument/documentLink",
-                    json!({
-                        "textDocument": { "uri": file_uri }
-                    }),
-                ) {
-                    return BenchResult::Fail(e);
-                }
-                match c.read_response(timeout) {
-                    Ok(resp) => {
-                        let ms = start.elapsed().as_secs_f64() * 1000.0;
-                        if i >= w {
-                            if first.is_none() {
-                                first = Some(resp.clone());
-                            }
-                            if !is_valid_response(&resp) {
-                                return BenchResult::Invalid {
-                                    first_response: resp,
-                                };
-                            }
-                            samples.push(ms);
-                        }
-                    }
-                    Err(e) => {
-                        return BenchResult::Fail(e);
-                    }
-                }
-            }
-            c.kill();
-            BenchResult::Ok {
-                samples,
-                first_response: first.unwrap_or(json!(null)),
-            }
-        });
-        all_results.push(("Document Links", rows));
-    }
-
-    // ── Generate outputs ──────────────────────────────────────────────────
+    // ── Final output ─────────────────────────────────────────────────────
 
     if !all_results.is_empty() {
-        let ts = timestamp();
-        let date = date_stamp();
-
-        // ── JSON output ─────────────────────────────────────────────────
-
-        let json_benchmarks: Vec<Value> = all_results
-            .iter()
-            .map(|(bench_name, rows)| {
-                json!({
-                    "name": bench_name,
-                    "servers": rows.iter().map(|r| r.to_json()).collect::<Vec<_>>(),
-                })
-            })
-            .collect();
-
-        let json_servers: Vec<Value> = versions
-            .iter()
-            .map(|(label, ver)| {
-                json!({
-                    "name": label,
-                    "version": ver,
-                })
-            })
-            .collect();
-
-        let json_output = json!({
-            "timestamp": ts,
-            "date": date,
-            "settings": {
-                "iterations": n,
-                "warmup": w,
-                "timeout_secs": timeout.as_secs(),
-            },
-            "servers": json_servers,
-            "benchmarks": json_benchmarks,
-        });
-
-        // Write timestamped JSON
-        let is_full_run = benchmarks.len() == ALL_BENCHMARKS.len()
+        let is_full = benchmarks.len() == ALL_BENCHMARKS.len()
             && ALL_BENCHMARKS.iter().all(|b| benchmarks.contains(b));
-        let json_dir = if is_full_run {
+        let dir = if is_full {
             "benchmarks".to_string()
         } else {
             let names: Vec<&str> = benchmarks.to_vec();
             format!("benchmarks/{}", names.join("+"))
         };
-        let _ = std::fs::create_dir_all(&json_dir);
-        let json_path = format!("{}/{}.json", json_dir, ts.replace(':', "-"));
-        let json_pretty = serde_json::to_string_pretty(&json_output).unwrap();
-        std::fs::write(&json_path, &json_pretty).unwrap();
-        eprintln!("  -> {}", json_path);
+        let path = save_json(
+            &all_results,
+            &versions,
+            n,
+            w,
+            &timeout,
+            &index_timeout,
+            &dir,
+        );
+        eprintln!("\n  {} {}", style("->").green().bold(), path);
+
+        // Clean up partial saves — the final snapshot has everything
+        let _ = std::fs::remove_dir_all("benchmarks/partial");
     }
 }
