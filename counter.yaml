@@ -14,7 +14,8 @@ warmup: 2
 timeout: 10        # seconds per request
 index_timeout: 15  # seconds for server to index/warm up
 output: benchmarks/counter
-readme: benchmarks/counter/README.md
+readme: 
+  - benchmarks/counter/README.md
 
 benchmarks:
   - spawn

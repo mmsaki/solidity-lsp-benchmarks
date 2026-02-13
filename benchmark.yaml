@@ -16,7 +16,9 @@ warmup: 2
 timeout: 10        # seconds per request
 index_timeout: 15  # seconds for server to index/warm up
 output: benchmarks/v4-core # directory for JSON results
-readme: benchmarks/v4-core/README.md # generates readme
+readme: 
+  - benchmarks/v4-core/README.md # generates readme
+  - README.md
 
 benchmarks:
   - spawn
