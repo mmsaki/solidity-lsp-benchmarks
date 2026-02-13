@@ -1335,14 +1335,6 @@ fn main() {
     // ── Final output ─────────────────────────────────────────────────────
 
     if !all_results.is_empty() {
-        let is_full = benchmarks.len() == ALL_BENCHMARKS.len()
-            && ALL_BENCHMARKS.iter().all(|b| benchmarks.contains(b));
-        let dir = if is_full {
-            output_dir.clone()
-        } else {
-            let names: Vec<&str> = benchmarks.to_vec();
-            format!("{}/{}", output_dir, names.join("+"))
-        };
         let path = save_json(
             &all_results,
             &versions,
@@ -1355,7 +1347,7 @@ fn main() {
             bench_file_rel,
             target_line,
             target_col,
-            &dir,
+            &output_dir,
         );
         eprintln!("\n  {} {}", style("->").green().bold(), path);
 
