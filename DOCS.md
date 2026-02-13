@@ -1,11 +1,12 @@
 # Documentation
 
-This project produces two binaries:
+This project produces three binaries:
 
 | Binary | Source | Purpose |
 |--------|--------|---------|
 | `bench` | `src/main.rs` | Run LSP benchmarks, produce JSON snapshots |
 | `gen-readme` | `src/gen_readme.rs` | Read a JSON snapshot, generate `README.md` |
+| `gen-analysis` | `src/gen_analysis.rs` | Read a JSON snapshot, generate analysis report |
 
 ## Quick Start
 
@@ -353,15 +354,44 @@ For successful benchmarks, three latency metrics are reported:
 After running benchmarks, generate the README from JSON data:
 
 ```sh
-./target/release/gen-readme benchmarks/2026-02-13T01-45-26Z.json              # write to README.md
+./target/release/gen-readme benchmarks/2026-02-13T01-45-26Z.json              # write to README.md, print to stdout
 ./target/release/gen-readme benchmarks/2026-02-13T01-45-26Z.json results.md   # custom output path
-./target/release/gen-readme benchmarks/snapshot.json -p                        # also print to stdout
+./target/release/gen-readme benchmarks/snapshot.json -q                        # write file only (quiet)
 ./target/release/gen-readme --help                                             # show help
 ```
 
-By default, `gen-readme` writes the file quietly. Use `-p` / `--print` to also print the generated README to stdout.
+By default, `gen-readme` prints the generated README to stdout and writes the file. Use `-q` / `--quiet` to suppress stdout output.
 
-If you set the `readme` field in your config, `bench` will call `gen-readme` automatically after the benchmark run -- no need to run it manually.
+If you set the `readme` field in your config, `bench` will call `gen-readme` automatically (in quiet mode) after the benchmark run -- no need to run it manually.
+
+## Generate Analysis
+
+Generate a detailed analysis report from benchmark JSON:
+
+```sh
+./target/release/gen-analysis benchmarks/v4-core/snapshot.json                 # write ANALYSIS.md, print to stdout
+./target/release/gen-analysis benchmarks/v4-core/snapshot.json report.md       # custom output path
+./target/release/gen-analysis benchmarks/v4-core/snapshot.json --base mmsaki   # head-to-head from mmsaki's perspective
+./target/release/gen-analysis benchmarks/v4-core/snapshot.json -q              # write file only (quiet)
+./target/release/gen-analysis --help                                           # show help
+```
+
+The analysis report includes:
+
+- **Consistency (p50 vs p95 Spread)** -- How much latency varies between typical and worst-case iterations. Highlights servers with high spike multipliers.
+- **Per-Iteration Range** -- Min/max latency across all measured iterations.
+- **Capability Matrix** -- Which servers succeed, fail, timeout, or crash on each benchmark, with a success rate summary.
+- **Overhead Comparison** -- Each server's mean latency vs the fastest server per benchmark, with multiplier.
+- **Memory Usage (RSS)** -- Resident set size after indexing. Only shown when RSS data is present in the JSON.
+- **Head-to-Head** -- How the base server compares to each competitor. Use `--base <server>` to set the perspective (defaults to the first server).
+
+### CLI options
+
+| Flag | Description |
+|------|-------------|
+| `-o, --output <path>` | Output file path (default: `ANALYSIS.md`) |
+| `--base <server>` | Server for head-to-head comparison (default: first server) |
+| `-q, --quiet` | Don't print analysis to stdout |
 
 ## Output
 
@@ -372,6 +402,41 @@ If you set the `readme` field in your config, `bench` will call `gen-readme` aut
 During a run, partial results are saved to `<output>/partial/` after each benchmark completes. These are cleaned up automatically when the full run finishes.
 
 If `readme` is set in the config, READMEs are automatically generated from the final JSON snapshot and written to each configured path.
+
+### JSON structure
+
+Each result stores per-iteration data in an `iterations` array. For successful benchmarks (`status: "ok"`), every iteration records its latency and the server's response:
+
+```json
+{
+  "server": "mmsaki",
+  "status": "ok",
+  "mean_ms": 8.8,
+  "p50_ms": 8.8,
+  "p95_ms": 10.1,
+  "rss_kb": 40944,
+  "response": "{ ... }",
+  "iterations": [
+    { "ms": 8.80, "response": "{ \"uri\": \"file:///...TickMath.sol\", ... }" },
+    { "ms": 8.45, "response": "{ \"uri\": \"file:///...TickMath.sol\", ... }" },
+    { "ms": 8.55, "response": "{ \"uri\": \"file:///...TickMath.sol\", ... }" }
+  ]
+}
+```
+
+For `spawn` benchmarks, the response is `"ok"` for each iteration and `rss_kb` is omitted (process is too short-lived). For `diagnostics` benchmarks, `rss_kb` is the peak RSS across all iterations (each iteration spawns a fresh server). For method benchmarks (definition, hover, etc.), `rss_kb` is measured once after indexing completes. The top-level `response` field duplicates the first iteration's response for backward compatibility.
+
+Failed or unsupported benchmarks (`status: "fail"` or `"invalid"`) have no `iterations` array:
+
+```json
+{
+  "server": "solc",
+  "status": "invalid",
+  "response": "[]"
+}
+```
+
+The per-iteration data enables warmup curve analysis, response consistency checks across iterations, and detection of performance degradation over time.
 
 `gen-readme` reads a JSON snapshot and writes `README.md` with:
 - Summary results table with medals and trophy

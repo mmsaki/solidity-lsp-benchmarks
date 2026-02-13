@@ -512,11 +512,25 @@ fn response_summary(resp: &Value, max_chars: usize) -> String {
 
 type Server = ServerConfig;
 
+// ── Memory measurement ──────────────────────────────────────────────────────
+
+/// Get the resident set size (RSS) of a process in kilobytes.
+/// Uses `ps` on macOS/Linux. Returns None if measurement fails.
+fn get_rss(pid: u32) -> Option<u64> {
+    let output = std::process::Command::new("ps")
+        .args(["-o", "rss=", "-p", &pid.to_string()])
+        .output()
+        .ok()?;
+    let s = String::from_utf8_lossy(&output.stdout);
+    s.trim().parse::<u64>().ok()
+}
+
 // ── Bench result per server ─────────────────────────────────────────────────
 
 enum BenchResult {
     Ok {
         iterations: Vec<(f64, String)>, // (ms, response_summary)
+        rss_kb: Option<u64>,            // resident set size after indexing
     },
     Invalid {
         first_response: Value,
@@ -530,6 +544,7 @@ struct BenchRow {
     p95: f64,
     mean: f64,
     iterations: Vec<(f64, String)>, // (ms, response_summary)
+    rss_kb: Option<u64>,            // resident set size after indexing
     kind: u8,
     fail_msg: String,
     summary: String,
@@ -549,7 +564,7 @@ impl BenchRow {
                         })
                     })
                     .collect();
-                json!({
+                let mut obj = json!({
                     "server": self.label,
                     "status": "ok",
                     "p50_ms": (self.p50 * 10.0).round() / 10.0,
@@ -557,7 +572,11 @@ impl BenchRow {
                     "mean_ms": (self.mean * 10.0).round() / 10.0,
                     "iterations": iter_json,
                     "response": self.summary,
-                })
+                });
+                if let Some(rss) = self.rss_kb {
+                    obj["rss_kb"] = json!(rss);
+                }
+                obj
             }
             1 => json!({
                 "server": self.label,
@@ -638,7 +657,10 @@ fn bench_spawn(
         }
         c.kill();
     }
-    BenchResult::Ok { iterations }
+    BenchResult::Ok {
+        iterations,
+        rss_kb: None,
+    }
 }
 
 /// Benchmark that spawns fresh each iteration, measures didOpen -> diagnostics.
@@ -653,6 +675,7 @@ fn bench_diagnostics(
     on_progress: &dyn Fn(&str),
 ) -> BenchResult {
     let mut iterations = Vec::new();
+    let mut peak_rss: Option<u64> = None;
     for i in 0..(w + n) {
         on_progress(&format!("{}  waiting for diagnostics", iter_msg(i, w, n)));
         let mut c = match LspClient::spawn(&srv.cmd, &srv.args, cwd) {
@@ -669,6 +692,10 @@ fn bench_diagnostics(
         match c.wait_for_valid_diagnostics(timeout) {
             Ok(diag_info) => {
                 let ms = start.elapsed().as_secs_f64() * 1000.0;
+                // Sample RSS after indexing, before kill
+                if let Some(rss) = get_rss(c.child.id()) {
+                    peak_rss = Some(peak_rss.map_or(rss, |prev: u64| prev.max(rss)));
+                }
                 on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
                 if i >= w {
                     let summary = response_summary(&diag_info.message, 80);
@@ -679,7 +706,10 @@ fn bench_diagnostics(
         }
         c.kill();
     }
-    BenchResult::Ok { iterations }
+    BenchResult::Ok {
+        iterations,
+        rss_kb: peak_rss,
+    }
 }
 
 /// Benchmark an LSP method on a single persistent server session.
@@ -713,6 +743,8 @@ fn bench_lsp_method(
         Ok(_) => {}
         Err(e) => return BenchResult::Fail(format!("wait_for_diagnostics: {}", e)),
     }
+    // Sample RSS after indexing
+    let rss_kb = get_rss(c.child.id());
 
     let file_uri = uri(target_file);
     let mut iterations = Vec::new();
@@ -740,7 +772,7 @@ fn bench_lsp_method(
         }
     }
     c.kill();
-    BenchResult::Ok { iterations }
+    BenchResult::Ok { iterations, rss_kb }
 }
 
 /// Run a benchmark across all servers, showing a spinner per server.
@@ -753,7 +785,7 @@ where
         let pb = spinner(&srv.label);
         let on_progress = |msg: &str| pb.set_message(msg.to_string());
         match f(srv, &on_progress) {
-            BenchResult::Ok { iterations } => {
+            BenchResult::Ok { iterations, rss_kb } => {
                 let mut latencies: Vec<f64> = iterations.iter().map(|(ms, _)| *ms).collect();
                 let (p50, p95, mean) = stats(&mut latencies);
                 let summary = iterations
@@ -767,6 +799,7 @@ where
                     p95,
                     mean,
                     iterations,
+                    rss_kb,
                     summary,
                     kind: 0,
                     fail_msg: String::new(),
@@ -781,6 +814,7 @@ where
                     p95: 0.0,
                     mean: 0.0,
                     iterations: vec![],
+                    rss_kb: None,
                     summary,
                     kind: 1,
                     fail_msg: String::new(),
@@ -794,6 +828,7 @@ where
                     p95: 0.0,
                     mean: 0.0,
                     iterations: vec![],
+                    rss_kb: None,
                     summary: String::new(),
                     kind: 2,
                     fail_msg: e,
@@ -1368,7 +1403,7 @@ fn main() {
             for readme in readmes {
                 eprintln!("  {} {}", style("readme").dim(), readme);
                 match std::process::Command::new(&gen_readme)
-                    .args([&path, readme])
+                    .args(["--quiet", &path, readme])
                     .status()
                 {
                     Ok(s) if s.success() => {}

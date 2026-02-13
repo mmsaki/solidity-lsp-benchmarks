@@ -12,6 +12,10 @@ path = "src/main.rs"
 name = "gen-readme"
 path = "src/gen_readme.rs"
 
+[[bin]]
+name = "gen-analysis"
+path = "src/gen_analysis.rs"
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

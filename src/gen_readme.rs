@@ -8,7 +8,7 @@ fn main() {
     // Parse flags
     let mut json_path: Option<String> = None;
     let mut output_path: Option<String> = None;
-    let mut print = false;
+    let mut quiet = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -21,8 +21,8 @@ fn main() {
                     std::process::exit(1);
                 }
             }
-            "-p" | "--print" => {
-                print = true;
+            "-q" | "--quiet" => {
+                quiet = true;
                 i += 1;
             }
             "-h" | "--help" => {
@@ -34,7 +34,7 @@ fn main() {
                 eprintln!();
                 eprintln!("Options:");
                 eprintln!("  -o, --output <path>  Same as OUTPUT positional argument");
-                eprintln!("  -p, --print          Print generated README to stdout");
+                eprintln!("  -q, --quiet          Don't print README to stdout");
                 eprintln!("  -h, --help           Show this help");
                 std::process::exit(0);
             }
@@ -78,7 +78,7 @@ fn main() {
 
     let md = generate_readme(&data, &json_path);
     std::fs::write(&output_path, &md).unwrap();
-    if print {
+    if !quiet {
         println!("{}", md);
     }
     eprintln!("  -> {}", output_path);
