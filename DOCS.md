@@ -46,17 +46,21 @@ cargo build --release
 | `-w, --warmup` | 2 | Number of warmup iterations (discarded) |
 | `-t, --timeout` | 10 | Timeout per request in seconds |
 | `-T, --index-timeout` | 15 | Time for server to index/warm up in seconds |
+| `-s, --server` | all | Only run against this server (can repeat, substring match) |
 | `-h, --help` | | Show help message |
 
 ### Examples
 
 ```sh
-bench all                        # Run all benchmarks
-bench all -n 1 -w 0             # Run all benchmarks once, no warmup
-bench diagnostics -n 5           # Run diagnostics with 5 iterations
-bench spawn definition           # Run specific benchmarks
-bench all -T 30                  # Give servers 30s to index
-bench all -t 5 -T 20            # 20s to index, 5s per request
+bench all                              # Run all benchmarks, all servers
+bench all -n 1 -w 0                   # Run all benchmarks once, no warmup
+bench diagnostics -n 5                 # Run diagnostics with 5 iterations
+bench spawn definition                 # Run specific benchmarks
+bench all -T 30                        # Give servers 30s to index
+bench all -t 5 -T 20                  # 20s to index, 5s per request
+bench all -s solc                      # Run all benchmarks, only solc
+bench diagnostics -s nomic -s solc     # Diagnostics for two servers
+bench hover -s mmsaki -n 1 -w 0       # Single hover, only mmsaki
 ```
 
 ## Methodology
