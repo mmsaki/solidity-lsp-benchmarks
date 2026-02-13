@@ -424,12 +424,7 @@ fn response_summary(resp: &Value) -> String {
         if r.is_null() {
             return "null".into();
         }
-        let s = serde_json::to_string_pretty(r).unwrap_or_default();
-        return if s.len() > 80 {
-            format!("{}...", &s[..80])
-        } else {
-            s
-        };
+        return serde_json::to_string_pretty(r).unwrap_or_default();
     }
     "no result".into()
 }
@@ -840,7 +835,19 @@ fn print_usage() {
     eprintln!("  -w, --warmup <N>      Number of warmup iterations (default: 2)");
     eprintln!("  -t, --timeout <SECS>         Timeout per request in seconds (default: 10)");
     eprintln!("  -T, --index-timeout <SECS>   Time for server to index/warm up (default: 15)");
+    eprintln!("  -s, --server <NAME>          Only run against this server (can repeat)");
     eprintln!("  -h, --help                   Show this help message");
+    eprintln!();
+    eprintln!("Servers:");
+    for srv in SERVERS {
+        eprintln!("  {}", srv.label);
+    }
+    eprintln!();
+    eprintln!("Examples:");
+    eprintln!("  bench all                        Run all benchmarks, all servers");
+    eprintln!("  bench all -s solc                Run all benchmarks, only solc");
+    eprintln!("  bench diagnostics -s nomic -s solc   Diagnostics for two servers");
+    eprintln!("  bench hover -n 1 -w 0            Single hover iteration, no warmup");
 }
 
 fn main() {
@@ -851,6 +858,7 @@ fn main() {
     let mut timeout_secs: u64 = 10;
     let mut index_timeout_secs: u64 = 15;
     let mut commands: Vec<String> = Vec::new();
+    let mut server_filter: Vec<String> = Vec::new();
 
     let mut i = 1;
     while i < args.len() {
@@ -887,6 +895,14 @@ fn main() {
                         eprintln!("Error: -T requires a number (seconds)");
                         std::process::exit(1);
                     });
+            }
+            "-s" | "--server" => {
+                i += 1;
+                let name = args.get(i).unwrap_or_else(|| {
+                    eprintln!("Error: -s requires a server name");
+                    std::process::exit(1);
+                });
+                server_filter.push(name.to_lowercase());
             }
             other => commands.push(other.to_string()),
         }
@@ -929,6 +945,13 @@ fn main() {
     let avail: Vec<&Server> = SERVERS
         .iter()
         .filter(|s| {
+            if !server_filter.is_empty()
+                && !server_filter
+                    .iter()
+                    .any(|f| s.label.to_lowercase().contains(f))
+            {
+                return false;
+            }
             let ok = available(s.cmd);
             if !ok {
                 eprintln!("  {} {} -- not found", style("skip").yellow(), s.label);

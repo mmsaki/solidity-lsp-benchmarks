@@ -94,6 +94,10 @@ fn generate_readme(data: &Value, json_path: &str) -> String {
             .get("timeout_secs")
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
+        let index_timeout = settings
+            .get("index_timeout_secs")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
 
         l.push("## Settings".into());
         l.push(String::new());
@@ -101,7 +105,8 @@ fn generate_readme(data: &Value, json_path: &str) -> String {
         l.push("|---------|-------|".into());
         l.push(format!("| Iterations | {} |", iterations));
         l.push(format!("| Warmup | {} |", warmup));
-        l.push(format!("| Timeout | {}s |", timeout));
+        l.push(format!("| Request timeout | {}s |", timeout));
+        l.push(format!("| Index timeout | {}s |", index_timeout));
         l.push(String::new());
     }
 
@@ -394,7 +399,7 @@ fn generate_readme(data: &Value, json_path: &str) -> String {
 // ---------------------------------------------------------------------------
 
 /// Collect server names from the first benchmark entry.
-fn collect_server_names<'a>(benchmarks: &'a [Value]) -> Vec<&'a str> {
+fn collect_server_names(benchmarks: &[Value]) -> Vec<&str> {
     benchmarks[0]
         .get("servers")
         .and_then(|s| s.as_array())
