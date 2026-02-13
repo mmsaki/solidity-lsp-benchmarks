@@ -28,14 +28,14 @@ Benchmarks comparing Solidity LSP servers against `v4-core` (`src/libraries/Pool
 
 | Benchmark | mmsaki 🏆 | solc | nomicfoundation | juanfranblanco | qiuxiang |
 |-----------|-------------|------|-----------------|----------------|----------|
-| [Spawn + Init](#spawn--init) | 4.00ms 🥇 | 113.40ms 🥉 | 862.90ms | 514.70ms | 67.90ms 🥈 |
-| [Diagnostics](#diagnostics) | 443.20ms 🥈 | 133.30ms 🥇 | timeout | FAIL | timeout |
-| [Go to Definition](#go-to-definition) | 8.90ms 🥇 | - | timeout | FAIL | timeout |
-| [Go to Declaration](#go-to-declaration) | 8.90ms 🥇 | unsupported | timeout | FAIL | timeout |
-| [Hover](#hover) | 13.70ms 🥇 | - | timeout | FAIL | timeout |
-| [Find References](#find-references) | 10.50ms 🥇 | unsupported | timeout | FAIL | timeout |
-| [Document Symbols](#document-symbols) | 8.40ms 🥇 | unsupported | timeout | FAIL | timeout |
-| [Document Links](#document-links) | 62.70ms 🥇 | unsupported | timeout | FAIL | timeout |
+| [initialize](#initialize) | 4.13ms 🥇 | 116.04ms 🥉 | 882.34ms | 524.35ms | 70.60ms 🥈 |
+| [textDocument/diagnostic](#textdocumentdiagnostic) | 454.45ms 🥈 | 136.80ms 🥇 | timeout | FAIL | timeout |
+| [textDocument/definition](#textdocumentdefinition) | 8.95ms 🥇 | - | timeout | FAIL | timeout |
+| [textDocument/declaration](#textdocumentdeclaration) | 9.04ms 🥇 | unsupported | timeout | FAIL | timeout |
+| [textDocument/hover](#textdocumenthover) | 14.01ms 🥇 | - | timeout | FAIL | timeout |
+| [textDocument/references](#textdocumentreferences) | 11.06ms 🥇 | unsupported | timeout | FAIL | timeout |
+| [textDocument/documentSymbol](#textdocumentdocumentsymbol) | 8.72ms 🥇 | unsupported | timeout | FAIL | timeout |
+| [textDocument/documentLink](#textdocumentdocumentlink) | 64.32ms 🥇 | unsupported | timeout | FAIL | timeout |
 
 > **🏆 Overall Winner: mmsaki** — 7 🥇 out of 8 benchmarks
 
@@ -53,14 +53,14 @@ Benchmarks comparing Solidity LSP servers against `v4-core` (`src/libraries/Pool
 
 | Feature | mmsaki | solc | nomicfoundation | juanfranblanco | qiuxiang |
 |---------|--------|------|-----------------|----------------|----------|
-| Spawn + Init | yes | yes | yes | yes | yes |
-| Diagnostics | yes | yes | timeout | crash | timeout |
-| Go to Definition | yes | empty | timeout | crash | timeout |
-| Go to Declaration | yes | no | timeout | crash | timeout |
-| Hover | yes | empty | timeout | crash | timeout |
-| Find References | yes | no | timeout | crash | timeout |
-| Document Symbols | yes | no | timeout | crash | timeout |
-| Document Links | yes | no | timeout | crash | timeout |
+| initialize | yes | yes | yes | yes | yes |
+| textDocument/diagnostic | yes | yes | timeout | crash | timeout |
+| textDocument/definition | yes | empty | timeout | crash | timeout |
+| textDocument/declaration | yes | no | timeout | crash | timeout |
+| textDocument/hover | yes | empty | timeout | crash | timeout |
+| textDocument/references | yes | no | timeout | crash | timeout |
+| textDocument/documentSymbol | yes | no | timeout | crash | timeout |
+| textDocument/documentLink | yes | no | timeout | crash | timeout |
 
 > yes = supported   no = unsupported   timeout = server timed out   crash = server crashed   empty = returned null/empty
 
@@ -70,25 +70,25 @@ Peak resident set size (RSS) measured after indexing.
 
 | Server | Peak RSS | Measured During |
 |--------|----------|-----------------|
-| **mmsaki** | 39.7 MB | Diagnostics |
-| **solc** | 26.2 MB | Diagnostics |
-| **nomicfoundation** | 513.1 MB | Document Symbols |
-| **juanfranblanco** | 0.0 MB | Diagnostics |
-| **qiuxiang** | 70.2 MB | Document Symbols |
+| **mmsaki** | 39.7 MB | textDocument/diagnostic |
+| **solc** | 26.2 MB | textDocument/diagnostic |
+| **nomicfoundation** | 513.5 MB | textDocument/documentSymbol |
+| **juanfranblanco** | 0.0 MB | textDocument/diagnostic |
+| **qiuxiang** | 70.1 MB | textDocument/references |
 
 ---
 
 ## Detailed Results
 
-### Spawn + Init
+### initialize
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **mmsaki** | 🥇 | 4.00ms | 4.00ms | 4.40ms |
-| **solc** | 🥉 | 113.40ms | 113.30ms | 116.10ms |
-| **nomicfoundation** | ok | 862.90ms | 864.90ms | 881.10ms |
-| **juanfranblanco** | ok | 514.70ms | 513.70ms | 518.90ms |
-| **qiuxiang** | 🥈 | 67.90ms | 67.60ms | 69.40ms |
+| **mmsaki** | 🥇 | 4.13ms | 4.20ms | 4.59ms |
+| **solc** | 🥉 | 116.04ms | 116.51ms | 117.81ms |
+| **nomicfoundation** | ok | 882.34ms | 877.35ms | 902.32ms |
+| **juanfranblanco** | ok | 524.35ms | 524.75ms | 526.85ms |
+| **qiuxiang** | 🥈 | 70.60ms | 70.98ms | 71.93ms |
 
 <details>
 <summary>Response details</summary>
@@ -125,12 +125,12 @@ ok
 
 </details>
 
-### Diagnostics
+### textDocument/diagnostic
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **mmsaki** | 🥈 | 443.20ms | 443.40ms | 452.20ms |
-| **solc** | 🥇 | 133.30ms | 133.90ms | 135.10ms |
+| **mmsaki** | 🥈 | 454.45ms | 452.05ms | 473.56ms |
+| **solc** | 🥇 | 136.80ms | 136.74ms | 138.35ms |
 | **nomicfoundation** | timeout | - | - | - |
 | **juanfranblanco** | EOF | - | - | - |
 | **qiuxiang** | timeout | - | - | - |
@@ -170,11 +170,11 @@ Error: `timeout`
 
 </details>
 
-### Go to Definition
+### textDocument/definition
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **mmsaki** | 🥇 | 8.90ms | 8.90ms | 9.80ms |
+| **mmsaki** | 🥇 | 8.95ms | 9.18ms | 9.52ms |
 | **solc** | invalid | - | - | - |
 | **nomicfoundation** | wait_for_diagnostics: timeout | - | - | - |
 | **juanfranblanco** | wait_for_diagnostics: EOF | - | - | - |
@@ -214,11 +214,11 @@ Error: `wait_for_diagnostics: timeout`
 
 </details>
 
-### Go to Declaration
+### textDocument/declaration
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **mmsaki** | 🥇 | 8.90ms | 8.80ms | 9.70ms |
+| **mmsaki** | 🥇 | 9.04ms | 8.86ms | 9.86ms |
 | **solc** | invalid | - | - | - |
 | **nomicfoundation** | wait_for_diagnostics: timeout | - | - | - |
 | **juanfranblanco** | wait_for_diagnostics: EOF | - | - | - |
@@ -258,11 +258,11 @@ Error: `wait_for_diagnostics: timeout`
 
 </details>
 
-### Hover
+### textDocument/hover
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **mmsaki** | 🥇 | 13.70ms | 13.80ms | 14.30ms |
+| **mmsaki** | 🥇 | 14.01ms | 13.99ms | 14.67ms |
 | **solc** | invalid | - | - | - |
 | **nomicfoundation** | wait_for_diagnostics: timeout | - | - | - |
 | **juanfranblanco** | wait_for_diagnostics: EOF | - | - | - |
@@ -299,11 +299,11 @@ Error: `wait_for_diagnostics: timeout`
 
 </details>
 
-### Find References
+### textDocument/references
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **mmsaki** | 🥇 | 10.50ms | 10.40ms | 11.50ms |
+| **mmsaki** | 🥇 | 11.06ms | 10.62ms | 14.40ms |
 | **solc** | invalid | - | - | - |
 | **nomicfoundation** | wait_for_diagnostics: timeout | - | - | - |
 | **juanfranblanco** | wait_for_diagnostics: EOF | - | - | - |
@@ -319,7 +319,7 @@ Error: `wait_for_diagnostics: timeout`
   {
     "range": {
       "end": {
-        "character": 58,...
+        "character": 41,...
 ```
 
 **solc**
@@ -342,11 +342,11 @@ Error: `wait_for_diagnostics: timeout`
 
 </details>
 
-### Document Symbols
+### textDocument/documentSymbol
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **mmsaki** | 🥇 | 8.40ms | 8.30ms | 8.80ms |
+| **mmsaki** | 🥇 | 8.72ms | 8.84ms | 9.17ms |
 | **solc** | invalid | - | - | - |
 | **nomicfoundation** | wait_for_diagnostics: timeout | - | - | - |
 | **juanfranblanco** | wait_for_diagnostics: EOF | - | - | - |
@@ -385,11 +385,11 @@ Error: `wait_for_diagnostics: timeout`
 
 </details>
 
-### Document Links
+### textDocument/documentLink
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **mmsaki** | 🥇 | 62.70ms | 62.70ms | 64.50ms |
+| **mmsaki** | 🥇 | 64.32ms | 64.55ms | 65.24ms |
 | **solc** | invalid | - | - | - |
 | **nomicfoundation** | wait_for_diagnostics: timeout | - | - | - |
 | **juanfranblanco** | wait_for_diagnostics: EOF | - | - | - |
@@ -430,6 +430,6 @@ Error: `wait_for_diagnostics: timeout`
 
 ---
 
-*Generated from [`benchmarks/v4-core/2026-02-13T09-53-03Z.json`](benchmarks/v4-core/2026-02-13T09-53-03Z.json) — benchmark run: 2026-02-13T09:53:03Z*
+*Generated from [`benchmarks/v4-core/2026-02-13T10-31-12Z.json`](benchmarks/v4-core/2026-02-13T10-31-12Z.json) — benchmark run: 2026-02-13T10:31:12Z*
 
 See [DOCS.md](./DOCS.md) for usage and installation.
