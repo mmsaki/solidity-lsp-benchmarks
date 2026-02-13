@@ -19,8 +19,13 @@ cargo build --release
 Edit `benchmark.yaml` to add your servers and choose which benchmarks to run, then:
 
 ```sh
-./target/release/bench            # run benchmarks
-./target/release/gen-readme       # generate README.md from results
+./target/release/bench            # run benchmarks (generates README if configured)
+```
+
+To generate a README manually from a specific JSON snapshot:
+
+```sh
+./target/release/gen-readme benchmarks/2026-02-13T01-45-26Z.json
 ```
 
 The generated config uses `examples/Counter.sol` (included in the repo) as the default benchmark target -- a small contract with NatSpec comments and intentional unused variables to trigger diagnostics.
@@ -81,6 +86,9 @@ output: benchmarks # directory for JSON results
 benchmarks:
   - all
 
+# Generate README after benchmarks (omit to skip)
+# readme: benchmarks/README.md
+
 # LSP servers to benchmark
 servers:
   - label: mmsaki
@@ -110,6 +118,7 @@ servers:
 | `index_timeout` | no | 15 | Time for server to index/warm up in seconds |
 | `output` | no | `benchmarks` | Directory for JSON result files |
 | `benchmarks` | no | all | List of benchmarks to run (see below) |
+| `readme` | no | -- | Path to write generated README after benchmarks (omit to skip) |
 | `servers` | yes | -- | List of LSP servers to benchmark |
 
 ### Selecting benchmarks
@@ -222,8 +231,10 @@ line: 102  # "TickMath" (editor line 103, col 16)
 col: 15
 iterations: 10
 warmup: 2
+output: benchmarks/v4-core
 benchmarks:
   - all
+readme: benchmarks/v4-core/README.md
 servers:
   - label: mmsaki
     cmd: solidity-language-server
@@ -338,20 +349,25 @@ For successful benchmarks, three latency metrics are reported:
 After running benchmarks, generate the README from JSON data:
 
 ```sh
-./target/release/gen-readme                                        # uses latest JSON in benchmarks/
-./target/release/gen-readme benchmarks/2026-02-13T01-45-26Z.json   # use a specific snapshot
-./target/release/gen-readme -o results.md                          # custom output path
-./target/release/gen-readme --help                                 # show help
+./target/release/gen-readme benchmarks/2026-02-13T01-45-26Z.json              # write to README.md
+./target/release/gen-readme benchmarks/2026-02-13T01-45-26Z.json results.md   # custom output path
+./target/release/gen-readme benchmarks/snapshot.json -p                        # also print to stdout
+./target/release/gen-readme --help                                             # show help
 ```
+
+By default, `gen-readme` writes the file quietly. Use `-p` / `--print` to also print the generated README to stdout.
+
+If you set the `readme` field in your config, `bench` will call `gen-readme` automatically after the benchmark run -- no need to run it manually.
 
 ## Output
 
 `bench` produces JSON snapshots in the `output` directory (default `benchmarks/`):
 
-- `<output>/<timestamp>.json` -- full runs
-- `<output>/<names>/<timestamp>.json` -- partial runs (e.g. `benchmarks/diagnostics/`)
+- `<output>/<timestamp>.json` -- all runs go to the same directory
 
 During a run, partial results are saved to `<output>/partial/` after each benchmark completes. These are cleaned up automatically when the full run finishes.
+
+If `readme` is set in the config, a README is automatically generated from the final JSON snapshot and written to the configured path.
 
 `gen-readme` reads a JSON snapshot and writes `README.md` with:
 - Summary results table with medals and trophy
