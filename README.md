@@ -1,4 +1,4 @@
-# Benchmark Analysis
+# Solidity LSP Benchmark Analysis
 
 Analysis of `v4-core` (`src/libraries/Pool.sol`) — 10 iterations per benchmark.
 
