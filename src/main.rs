@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 fn timestamp() -> String {
     let output = Command::new("date")
-        .args(&["-u", "+%Y-%m-%dT%H:%M:%SZ"])
+        .args(["-u", "+%Y-%m-%dT%H:%M:%SZ"])
         .output()
         .ok();
     output
@@ -17,7 +17,7 @@ fn timestamp() -> String {
 }
 
 fn date_stamp() -> String {
-    let output = Command::new("date").args(&["+%Y-%m-%d"]).output().ok();
+    let output = Command::new("date").args(["+%Y-%m-%d"]).output().ok();
     output
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_string())
@@ -38,6 +38,7 @@ struct LspClient {
 struct DiagnosticsInfo {
     count: usize,
     elapsed_ms: f64,
+    message: Value,
 }
 
 /// Background reader thread: reads LSP messages from stdout and sends them
@@ -183,20 +184,6 @@ impl LspClient {
         }
     }
 
-    fn wait_for_notif(&mut self, method: &str, timeout: Duration) -> Result<Value, String> {
-        let deadline = Instant::now() + timeout;
-        loop {
-            let remaining = deadline.saturating_duration_since(Instant::now());
-            if remaining.is_zero() {
-                return Err(format!("timeout waiting for {}", method));
-            }
-            let msg = self.recv(remaining)?;
-            if msg.get("method").and_then(|m| m.as_str()) == Some(method) {
-                return Ok(msg);
-            }
-        }
-    }
-
     /// Drain messages until we see publishDiagnostics with non-empty diagnostics.
     /// Returns the count and elapsed time. If only empty diagnostics arrive before
     /// timeout, returns those. This is the "time to first valid diagnostics" metric.
@@ -205,6 +192,7 @@ impl LspClient {
         let deadline = start + timeout;
         let mut last_count = 0usize;
         let mut last_elapsed = 0.0f64;
+        let mut last_msg = json!(null);
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
@@ -212,6 +200,7 @@ impl LspClient {
                     Ok(DiagnosticsInfo {
                         count: last_count,
                         elapsed_ms: last_elapsed,
+                        message: last_msg,
                     })
                 } else {
                     Err("timeout waiting for diagnostics".into())
@@ -239,10 +228,12 @@ impl LspClient {
                 let elapsed = start.elapsed().as_secs_f64() * 1000.0;
                 last_count = count;
                 last_elapsed = elapsed;
+                last_msg = msg;
                 if count > 0 {
                     return Ok(DiagnosticsInfo {
                         count,
                         elapsed_ms: elapsed,
+                        message: last_msg,
                     });
                 }
             }
@@ -266,6 +257,7 @@ impl LspClient {
                             "completionItem": { "snippetSupport": false }
                         },
                         "documentSymbol": { "dynamicRegistration": false },
+                        "documentLink": { "dynamicRegistration": false },
                         "references": { "dynamicRegistration": false },
                         "rename": { "dynamicRegistration": false },
                         "signatureHelp": { "dynamicRegistration": false },
@@ -413,7 +405,7 @@ fn detect_version(cmd: &str) -> String {
 
     // Fallback for volta/npm: try `npm info <cmd> version`
     if let Ok(output) = Command::new("npm")
-        .args(&["info", cmd, "version"])
+        .args(["info", cmd, "version"])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .output()
@@ -429,7 +421,9 @@ fn detect_version(cmd: &str) -> String {
     "unknown".to_string()
 }
 
-fn stats(samples: &mut Vec<f64>) -> (f64, f64, f64) {
+type Type<'a> = &'a mut Vec<f64>;
+
+fn stats(samples: Type) -> (f64, f64, f64) {
     samples.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let n = samples.len();
     (
@@ -468,18 +462,20 @@ fn response_summary(resp: &Value) -> String {
                 .unwrap_or("unknown")
         );
     }
-    match resp.get("result") {
-        None => "no result".into(),
-        Some(r) if r.is_null() => "null".into(),
-        Some(r) => {
-            let s = serde_json::to_string(r).unwrap_or_default();
-            if s.len() > 120 {
-                format!("{}...", &s[..120])
-            } else {
-                s
-            }
+    // Handle JSON-RPC responses (have "result") or notifications (have "params")
+    let payload = resp.get("result").or_else(|| resp.get("params"));
+    if let Some(r) = payload {
+        if r.is_null() {
+            return "null".into();
         }
+        let s = serde_json::to_string_pretty(r).unwrap_or_default();
+        return if s.len() > 80 {
+            format!("{}...", &s[..80])
+        } else {
+            s
+        };
     }
+    "no result".into()
 }
 
 // ── Servers ─────────────────────────────────────────────────────────────────
@@ -663,20 +659,37 @@ where
         }
     }
 
-    // Find the fastest mean among valid (kind=0) rows
-    let best_mean = rows
+    // Rank valid rows (kind=0 with actual results) by mean for medals
+    let has_valid_result = |r: &Row| -> bool {
+        r.kind == 0 && r.summary != "null" && r.summary != "no result" && !r.summary.is_empty()
+    };
+    let mut ranked: Vec<(usize, f64)> = rows
         .iter()
-        .filter(|r| r.kind == 0)
-        .map(|r| r.mean)
-        .fold(f64::MAX, f64::min);
+        .enumerate()
+        .filter(|(_, r)| has_valid_result(r))
+        .map(|(i, r)| (i, r.mean))
+        .collect();
+    ranked.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
-    for row in &rows {
+    let medals = ["🥇", "🥈", "🥉"];
+    let mut row_medal: Vec<&str> = vec![""; rows.len()];
+    for (place, (idx, _)) in ranked.iter().enumerate() {
+        if place < medals.len() {
+            row_medal[*idx] = medals[place];
+        }
+    }
+
+    for (i, row) in rows.iter().enumerate() {
         match row.kind {
             0 => {
-                let bolt = if row.mean <= best_mean { " ⚡" } else { "" };
+                let medal = if row_medal[i].is_empty() {
+                    "".to_string()
+                } else {
+                    format!(" {}", row_medal[i])
+                };
                 lines.push(format!(
-                    "| {} | {:.1}{} | {:.1}{} | {:.1}{} |",
-                    row.label, row.p50, bolt, row.p95, bolt, row.mean, bolt
+                    "| {}{} | {:.1} | {:.1} | {:.1} |",
+                    row.label, medal, row.p50, row.p95, row.mean
                 ));
             }
             1 => {
@@ -816,6 +829,7 @@ const ALL_BENCHMARKS: &[&str] = &[
     "hover",
     "references",
     "documentSymbol",
+    "documentLink",
 ];
 
 fn print_usage() {
@@ -830,6 +844,7 @@ fn print_usage() {
     eprintln!("  hover          — hover on TickMath in Pool.sol");
     eprintln!("  references     — find references on TickMath in Pool.sol");
     eprintln!("  documentSymbol — get document symbols for Pool.sol");
+    eprintln!("  documentLink   — get document links for Pool.sol");
     eprintln!();
     eprintln!("Options:");
     eprintln!("  -n, --iterations <N>  Number of measured iterations (default: 10)");
@@ -1015,7 +1030,7 @@ fn main() {
             Path::new(v4),
             |srv, root, cwd| {
                 let mut samples = Vec::new();
-                let mut first: Option<Value> = None;
+                let mut first: Option<DiagnosticsInfo> = None;
                 for i in 0..(w + n) {
                     let mut c = match LspClient::spawn(srv.cmd, srv.args, cwd) {
                         Ok(c) => c,
@@ -1028,61 +1043,28 @@ fn main() {
                     if let Err(e) = c.open_file(&pool_sol) {
                         return BenchResult::Fail(e);
                     }
-                    match c.wait_for_notif("textDocument/publishDiagnostics", timeout) {
-                        Ok(resp) => {
+                    match c.wait_for_valid_diagnostics(timeout) {
+                        Ok(diag_info) => {
                             let ms = start.elapsed().as_secs_f64() * 1000.0;
-                            if first.is_none() {
-                                // Extract the diagnostics array from the notification
-                                let diags = resp
-                                    .get("params")
-                                    .and_then(|p| p.get("diagnostics"))
-                                    .cloned()
-                                    .unwrap_or(json!([]));
-                                let summary = if let Some(arr) = diags.as_array() {
-                                    if arr.is_empty() {
-                                        "no diagnostics".to_string()
-                                    } else {
-                                        let messages: Vec<String> = arr
-                                            .iter()
-                                            .take(3)
-                                            .filter_map(|d| {
-                                                let sev = d
-                                                    .get("severity")
-                                                    .and_then(|s| s.as_u64())
-                                                    .unwrap_or(0);
-                                                let msg = d
-                                                    .get("message")
-                                                    .and_then(|m| m.as_str())
-                                                    .unwrap_or("");
-                                                let src = d
-                                                    .get("source")
-                                                    .and_then(|s| s.as_str())
-                                                    .unwrap_or("");
-                                                Some(format!("[{}] {} ({})", sev, msg, src))
-                                            })
-                                            .collect();
-                                        format!(
-                                            "{} diagnostics: {}",
-                                            arr.len(),
-                                            messages.join("; ")
-                                        )
-                                    }
-                                } else {
-                                    "invalid diagnostics".to_string()
-                                };
-                                first = Some(json!({"result": summary}));
-                            }
                             if i >= w {
                                 samples.push(ms);
+                            }
+                            if first.is_none() {
+                                first = Some(diag_info);
                             }
                         }
                         Err(e) => return BenchResult::Fail(e),
                     }
                     c.kill();
                 }
+                let diag_info = first.unwrap_or(DiagnosticsInfo {
+                    count: 0,
+                    elapsed_ms: 0.0,
+                    message: json!(null),
+                });
                 BenchResult::Ok {
                     samples,
-                    first_response: first.unwrap_or(json!(null)),
+                    first_response: diag_info.message.clone(),
                     diag_info: None,
                 }
             },
@@ -1592,6 +1574,95 @@ fn main() {
         all_results.push(("Document Symbols", rows));
     }
 
+    // ── documentLink ─────────────────────────────────────────────────────────
+
+    if benchmarks.contains(&"documentLink") {
+        let pool_sol = Path::new(v4).join("src/libraries/Pool.sol");
+        let line_count = std::fs::read_to_string(&pool_sol)
+            .map(|s| s.lines().count())
+            .unwrap_or(0);
+
+        let rows = run_bench(
+            "documentLink",
+            &[
+                format!("## 8. DOCUMENT LINKS (ms) — {} iterations, {} warmup", n, w),
+                String::new(),
+                format!("File: Pool.sol ({} lines)", line_count),
+                "Measures: textDocument/documentLink request -> response".into(),
+                "Waits for valid publishDiagnostics before sending requests.".into(),
+                String::new(),
+            ],
+            &avail,
+            &root,
+            Path::new(v4),
+            |srv, root, cwd| {
+                let mut c = match LspClient::spawn(srv.cmd, srv.args, cwd) {
+                    Ok(c) => c,
+                    Err(e) => return BenchResult::Fail(e),
+                };
+                if let Err(e) = c.initialize(root) {
+                    return BenchResult::Fail(e);
+                }
+                if let Err(e) = c.open_file(&pool_sol) {
+                    return BenchResult::Fail(e);
+                }
+
+                // Wait for valid diagnostics (build complete)
+                let diag_info = match c.wait_for_valid_diagnostics(timeout) {
+                    Ok(info) => info,
+                    Err(e) => return BenchResult::Fail(format!("wait_for_diagnostics: {}", e)),
+                };
+                eprintln!(
+                    "diagnostics: {} items in {:.0}ms ... ",
+                    diag_info.count, diag_info.elapsed_ms
+                );
+                eprint!("    ");
+
+                let file_uri = uri(&pool_sol);
+                let mut samples = Vec::new();
+                let mut first: Option<Value> = None;
+                for i in 0..(w + n) {
+                    let start = Instant::now();
+                    if let Err(e) = c.send(
+                        "textDocument/documentLink",
+                        json!({
+                            "textDocument": { "uri": file_uri }
+                        }),
+                    ) {
+                        return BenchResult::Fail(e);
+                    }
+                    match c.read_response(timeout) {
+                        Ok(resp) => {
+                            let ms = start.elapsed().as_secs_f64() * 1000.0;
+                            if i >= w {
+                                if first.is_none() {
+                                    first = Some(resp.clone());
+                                }
+                                if !is_valid_response(&resp) {
+                                    return BenchResult::Invalid {
+                                        first_response: resp,
+                                        diag_info: Some(diag_info),
+                                    };
+                                }
+                                samples.push(ms);
+                            }
+                        }
+                        Err(e) => {
+                            return BenchResult::Fail(e);
+                        }
+                    }
+                }
+                c.kill();
+                BenchResult::Ok {
+                    samples,
+                    first_response: first.unwrap_or(json!(null)),
+                    diag_info: Some(diag_info),
+                }
+            },
+        );
+        all_results.push(("Document Links", rows));
+    }
+
     // ── Generate outputs ──────────────────────────────────────────────────
 
     if !all_results.is_empty() {
@@ -1634,129 +1705,173 @@ fn main() {
         });
 
         // Write timestamped JSON
-        let _ = std::fs::create_dir_all("benchmarks");
-        let json_path = format!("benchmarks/{}.json", date);
+        let is_full_run = benchmarks.len() == ALL_BENCHMARKS.len()
+            && ALL_BENCHMARKS.iter().all(|b| benchmarks.contains(b));
+        let json_dir = if is_full_run {
+            "benchmarks".to_string()
+        } else {
+            let names: Vec<&str> = benchmarks.iter().copied().collect();
+            format!("benchmarks/{}", names.join("+"))
+        };
+        let _ = std::fs::create_dir_all(&json_dir);
+        let json_path = format!("{}/{}.json", json_dir, ts.replace(':', "-"));
         let json_pretty = serde_json::to_string_pretty(&json_output).unwrap();
         std::fs::write(&json_path, &json_pretty).unwrap();
         eprintln!("  -> {}", json_path);
 
-        // Append to history.json
-        let history_path = "benchmarks/history.json";
-        let mut history: Vec<Value> = std::fs::read_to_string(history_path)
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default();
-        history.push(json_output);
-        let history_pretty = serde_json::to_string_pretty(&history).unwrap();
-        std::fs::write(history_path, &history_pretty).unwrap();
-        eprintln!("  -> {}", history_path);
+        // ── results/README.md (only for full runs) ────────────────────────
+        if is_full_run {
+            let mut lines: Vec<String> = Vec::new();
+            lines.push("# Solidity LSP Benchmark Results".to_string());
+            lines.push(String::new());
+            lines.push(format!("Date: {}", date));
+            lines.push(String::new());
 
-        // ── results/README.md ───────────────────────────────────────────
+            // Settings table
+            lines.push("## Settings".to_string());
+            lines.push(String::new());
+            lines.push("| Setting | Value |".to_string());
+            lines.push("|---------|-------|".to_string());
+            lines.push(format!("| Iterations | {} |", n));
+            lines.push(format!("| Warmup | {} |", w));
+            lines.push(format!("| Timeout | {}s |", timeout.as_secs()));
+            lines.push(String::new());
 
-        let mut lines: Vec<String> = Vec::new();
-        lines.push("# Solidity LSP Benchmark Results".to_string());
-        lines.push(String::new());
-        lines.push(format!("Date: {}", date));
-        lines.push(String::new());
+            // Servers table with versions
+            lines.push("## Servers".to_string());
+            lines.push(String::new());
+            lines.push("| Server | Version |".to_string());
+            lines.push("|--------|---------|".to_string());
+            for (label, ver) in &versions {
+                lines.push(format!("| {} | {} |", label, ver));
+            }
+            lines.push(String::new());
 
-        // Settings table
-        lines.push("## Settings".to_string());
-        lines.push(String::new());
-        lines.push("| Setting | Value |".to_string());
-        lines.push("|---------|-------|".to_string());
-        lines.push(format!("| Iterations | {} |", n));
-        lines.push(format!("| Warmup | {} |", w));
-        lines.push(format!("| Timeout | {}s |", timeout.as_secs()));
-        lines.push(String::new());
+            // Results table — rank servers per benchmark, track wins for trophy
+            let has_valid = |r: &BenchRow| -> bool {
+                r.kind == 0
+                    && r.summary != "null"
+                    && r.summary != "no result"
+                    && !r.summary.is_empty()
+            };
 
-        // Servers table with versions
-        lines.push("## Servers".to_string());
-        lines.push(String::new());
-        lines.push("| Server | Version |".to_string());
-        lines.push("|--------|---------|".to_string());
-        for (label, ver) in &versions {
-            lines.push(format!("| {} | {} |", label, ver));
-        }
-        lines.push(String::new());
+            let medal_icons = ["🥇", "🥈", "🥉"];
+            let mut wins: std::collections::HashMap<String, usize> =
+                std::collections::HashMap::new();
 
-        // Results table
-        lines.push("## Results".to_string());
-        lines.push(String::new());
+            // Pre-compute medals for each benchmark row
+            let mut bench_medals: Vec<Vec<&str>> = Vec::new();
+            for (_bench_name, rows) in &all_results {
+                let mut ranked: Vec<(usize, f64)> = rows
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, r)| has_valid(r))
+                    .map(|(i, r)| (i, r.mean))
+                    .collect();
+                ranked.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
 
-        let mut header = "| Benchmark |".to_string();
-        let mut separator = "|-----------|".to_string();
-        for label in &server_labels {
-            header.push_str(&format!(" {} |", label));
-            separator.push_str(&"-".repeat(label.len() + 2));
-            separator.push('|');
-        }
-        lines.push(header);
-        lines.push(separator);
+                let mut row_medals = vec![""; rows.len()];
+                for (place, (idx, _)) in ranked.iter().enumerate() {
+                    if place < medal_icons.len() {
+                        row_medals[*idx] = medal_icons[place];
+                    }
+                    if place == 0 {
+                        *wins.entry(rows[*idx].label.clone()).or_insert(0) += 1;
+                    }
+                }
+                bench_medals.push(row_medals);
+            }
 
-        for (bench_name, rows) in &all_results {
-            let best_mean = rows
+            // Find overall winner (most 🥇 wins)
+            let trophy_winner = wins
                 .iter()
-                .filter(|r| r.kind == 0)
-                .map(|r| r.mean)
-                .fold(f64::MAX, f64::min);
+                .max_by_key(|(_, count)| *count)
+                .map(|(label, _)| label.clone());
 
-            let mut row = format!("| {} |", bench_name);
-            for r in rows {
-                let cell = match r.kind {
-                    0 => {
-                        let bolt = if r.mean <= best_mean { " ⚡" } else { "" };
-                        format!(" {:.1}ms{} |", r.mean, bolt)
-                    }
-                    1 => {
-                        if r.summary.contains("Unknown method") || r.summary.contains("unsupported")
-                        {
-                            " unsupported |".to_string()
-                        } else {
-                            " - |".to_string()
-                        }
-                    }
-                    _ => {
-                        if r.fail_msg.contains("timeout") {
-                            " timeout |".to_string()
-                        } else {
-                            " FAIL |".to_string()
-                        }
-                    }
+            lines.push("## Results".to_string());
+            lines.push(String::new());
+
+            let mut header = "| Benchmark |".to_string();
+            let mut separator = "|-----------|".to_string();
+            for label in &server_labels {
+                let trophy = if trophy_winner.as_deref() == Some(label.as_ref()) {
+                    " 🏆"
+                } else {
+                    ""
                 };
-                row.push_str(&cell);
+                header.push_str(&format!(" {}{} |", label, trophy));
+                separator.push_str(&"-".repeat(label.len() + trophy.len() + 2));
+                separator.push('|');
             }
-            lines.push(row);
-        }
+            lines.push(header);
+            lines.push(separator);
 
-        lines.push(String::new());
-        lines.push("## Detailed Results".to_string());
-        lines.push(String::new());
-        for name in ALL_BENCHMARKS {
-            if all_results.iter().any(|(_, rows)| {
-                rows.first().map(|_| true).unwrap_or(false)
-                    && all_results.iter().any(|(n, _)| {
-                        *n == match *name {
-                            "spawn" => "Spawn + Init",
-                            "diagnostics" => "Diagnostics",
-                            "definition" => "Go to Definition",
-                            "declaration" => "Go to Declaration",
-                            "hover" => "Hover",
-                            "references" => "Find References",
-                            "documentSymbol" => "Document Symbols",
-                            _ => "",
+            for (i, (bench_name, rows)) in all_results.iter().enumerate() {
+                let mut row = format!("| {} |", bench_name);
+                for (j, r) in rows.iter().enumerate() {
+                    let cell = match r.kind {
+                        0 => {
+                            let medal = bench_medals[i][j];
+                            let suffix = if medal.is_empty() {
+                                "".to_string()
+                            } else {
+                                format!(" {}", medal)
+                            };
+                            format!(" {:.1}ms{} |", r.mean, suffix)
                         }
-                    })
-            }) {
-                lines.push(format!("- [{}](./{}.md)", name, name));
+                        1 => {
+                            if r.summary.contains("Unknown method")
+                                || r.summary.contains("unsupported")
+                            {
+                                " unsupported |".to_string()
+                            } else {
+                                " - |".to_string()
+                            }
+                        }
+                        _ => {
+                            if r.fail_msg.contains("timeout") {
+                                " timeout |".to_string()
+                            } else {
+                                " FAIL |".to_string()
+                            }
+                        }
+                    };
+                    row.push_str(&cell);
+                }
+                lines.push(row);
             }
-        }
-        lines.push(String::new());
 
-        let out = lines.join("\n") + "\n";
-        let path = "results/README.md";
-        let _ = std::fs::create_dir_all("results");
-        std::fs::write(path, &out).unwrap();
-        println!("{}", out);
-        eprintln!("  -> {}", path);
+            lines.push(String::new());
+            lines.push("## Detailed Results".to_string());
+            lines.push(String::new());
+            for name in ALL_BENCHMARKS {
+                if all_results.iter().any(|(_, rows)| {
+                    rows.first().map(|_| true).unwrap_or(false)
+                        && all_results.iter().any(|(n, _)| {
+                            *n == match *name {
+                                "spawn" => "Spawn + Init",
+                                "diagnostics" => "Diagnostics",
+                                "definition" => "Go to Definition",
+                                "declaration" => "Go to Declaration",
+                                "hover" => "Hover",
+                                "references" => "Find References",
+                                "documentSymbol" => "Document Symbols",
+                                "documentLink" => "Document Links",
+                                _ => "",
+                            }
+                        })
+                }) {
+                    lines.push(format!("- [{}](./{}.md)", name, name));
+                }
+            }
+            lines.push(String::new());
+
+            let out = lines.join("\n") + "\n";
+            let path = "results/README.md";
+            let _ = std::fs::create_dir_all("results");
+            std::fs::write(path, &out).unwrap();
+            println!("{}", out);
+            eprintln!("  -> {}", path);
+        } // end is_full_run
     }
 }

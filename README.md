@@ -55,6 +55,7 @@ cargo build --release
 | `hover` | Hover on TickMath in Pool.sol |
 | `references` | Find references on TickMath in Pool.sol |
 | `documentSymbol` | Get document symbols for Pool.sol |
+| `documentLink` | Get document links for Pool.sol |
 
 ### Options
 
