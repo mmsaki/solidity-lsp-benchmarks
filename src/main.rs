@@ -534,8 +534,12 @@ enum BenchResult {
     },
     Invalid {
         first_response: Value,
+        rss_kb: Option<u64>,
     },
-    Fail(String),
+    Fail {
+        error: String,
+        rss_kb: Option<u64>,
+    },
 }
 
 struct BenchRow {
@@ -578,16 +582,28 @@ impl BenchRow {
                 }
                 obj
             }
-            1 => json!({
-                "server": self.label,
-                "status": "invalid",
-                "response": self.summary,
-            }),
-            _ => json!({
-                "server": self.label,
-                "status": "fail",
-                "error": self.fail_msg,
-            }),
+            1 => {
+                let mut obj = json!({
+                    "server": self.label,
+                    "status": "invalid",
+                    "response": self.summary,
+                });
+                if let Some(rss) = self.rss_kb {
+                    obj["rss_kb"] = json!(rss);
+                }
+                obj
+            }
+            _ => {
+                let mut obj = json!({
+                    "server": self.label,
+                    "status": "fail",
+                    "error": self.fail_msg,
+                });
+                if let Some(rss) = self.rss_kb {
+                    obj["rss_kb"] = json!(rss);
+                }
+                obj
+            }
         }
     }
 }
@@ -645,10 +661,18 @@ fn bench_spawn(
         let start = Instant::now();
         let mut c = match LspClient::spawn(&srv.cmd, &srv.args, cwd) {
             Ok(c) => c,
-            Err(e) => return BenchResult::Fail(e),
+            Err(e) => {
+                return BenchResult::Fail {
+                    error: e,
+                    rss_kb: None,
+                }
+            }
         };
         if let Err(e) = c.initialize(root) {
-            return BenchResult::Fail(e);
+            return BenchResult::Fail {
+                error: e,
+                rss_kb: None,
+            };
         }
         let ms = start.elapsed().as_secs_f64() * 1000.0;
         on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
@@ -680,14 +704,25 @@ fn bench_diagnostics(
         on_progress(&format!("{}  waiting for diagnostics", iter_msg(i, w, n)));
         let mut c = match LspClient::spawn(&srv.cmd, &srv.args, cwd) {
             Ok(c) => c,
-            Err(e) => return BenchResult::Fail(e),
+            Err(e) => {
+                return BenchResult::Fail {
+                    error: e,
+                    rss_kb: None,
+                }
+            }
         };
         if let Err(e) = c.initialize(root) {
-            return BenchResult::Fail(e);
+            return BenchResult::Fail {
+                error: e,
+                rss_kb: None,
+            };
         }
         let start = Instant::now();
         if let Err(e) = c.open_file(target_file) {
-            return BenchResult::Fail(e);
+            return BenchResult::Fail {
+                error: e,
+                rss_kb: None,
+            };
         }
         match c.wait_for_valid_diagnostics(timeout) {
             Ok(diag_info) => {
@@ -702,7 +737,14 @@ fn bench_diagnostics(
                     iterations.push((ms, summary));
                 }
             }
-            Err(e) => return BenchResult::Fail(e),
+            Err(e) => {
+                // Sample RSS even on timeout — server is still alive
+                let rss = get_rss(c.child.id());
+                return BenchResult::Fail {
+                    error: e,
+                    rss_kb: rss,
+                };
+            }
         }
         c.kill();
     }
@@ -730,18 +772,38 @@ fn bench_lsp_method(
     on_progress("spawning");
     let mut c = match LspClient::spawn(&srv.cmd, &srv.args, cwd) {
         Ok(c) => c,
-        Err(e) => return BenchResult::Fail(e),
+        Err(e) => {
+            return BenchResult::Fail {
+                error: e,
+                rss_kb: None,
+            }
+        }
     };
     if let Err(e) = c.initialize(root) {
-        return BenchResult::Fail(e);
+        let rss = get_rss(c.child.id());
+        return BenchResult::Fail {
+            error: e,
+            rss_kb: rss,
+        };
     }
     if let Err(e) = c.open_file(target_file) {
-        return BenchResult::Fail(e);
+        let rss = get_rss(c.child.id());
+        return BenchResult::Fail {
+            error: e,
+            rss_kb: rss,
+        };
     }
     on_progress("waiting for diagnostics");
     match c.wait_for_valid_diagnostics(index_timeout) {
         Ok(_) => {}
-        Err(e) => return BenchResult::Fail(format!("wait_for_diagnostics: {}", e)),
+        Err(e) => {
+            // Sample RSS even on timeout — server is still alive
+            let rss = get_rss(c.child.id());
+            return BenchResult::Fail {
+                error: format!("wait_for_diagnostics: {}", e),
+                rss_kb: rss,
+            };
+        }
     }
     // Sample RSS after indexing
     let rss_kb = get_rss(c.child.id());
@@ -752,7 +814,7 @@ fn bench_lsp_method(
         on_progress(&iter_msg(i, w, n));
         let start = Instant::now();
         if let Err(e) = c.send(method, params_fn(&file_uri)) {
-            return BenchResult::Fail(e);
+            return BenchResult::Fail { error: e, rss_kb };
         }
         match c.read_response(timeout) {
             Ok(resp) => {
@@ -762,13 +824,14 @@ fn bench_lsp_method(
                     if !is_valid_response(&resp) {
                         return BenchResult::Invalid {
                             first_response: resp,
+                            rss_kb,
                         };
                     }
                     let summary = response_summary(&resp, 80);
                     iterations.push((ms, summary));
                 }
             }
-            Err(e) => return BenchResult::Fail(e),
+            Err(e) => return BenchResult::Fail { error: e, rss_kb },
         }
     }
     c.kill();
@@ -805,7 +868,10 @@ where
                     fail_msg: String::new(),
                 });
             }
-            BenchResult::Invalid { first_response } => {
+            BenchResult::Invalid {
+                first_response,
+                rss_kb,
+            } => {
                 let summary = response_summary(&first_response, 80);
                 finish_fail(&pb, "invalid response");
                 rows.push(BenchRow {
@@ -814,24 +880,24 @@ where
                     p95: 0.0,
                     mean: 0.0,
                     iterations: vec![],
-                    rss_kb: None,
+                    rss_kb,
                     summary,
                     kind: 1,
                     fail_msg: String::new(),
                 });
             }
-            BenchResult::Fail(e) => {
-                finish_fail(&pb, &e);
+            BenchResult::Fail { error, rss_kb } => {
+                finish_fail(&pb, &error);
                 rows.push(BenchRow {
                     label: srv.label.to_string(),
                     p50: 0.0,
                     p95: 0.0,
                     mean: 0.0,
                     iterations: vec![],
-                    rss_kb: None,
+                    rss_kb,
                     summary: String::new(),
                     kind: 2,
-                    fail_msg: e,
+                    fail_msg: error,
                 });
             }
         }
