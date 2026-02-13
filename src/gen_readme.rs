@@ -5,16 +5,50 @@ use std::path::Path;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
+    // Parse flags
+    let mut json_path: Option<String> = None;
+    let mut output_path = "README.md".to_string();
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "-o" | "--output" => {
+                if i + 1 < args.len() {
+                    output_path = args[i + 1].clone();
+                    i += 2;
+                } else {
+                    eprintln!("Error: {} requires a path argument", args[i]);
+                    std::process::exit(1);
+                }
+            }
+            "-h" | "--help" => {
+                eprintln!("Usage: gen-readme [OPTIONS] [path/to/benchmark.json]");
+                eprintln!();
+                eprintln!("Options:");
+                eprintln!("  -o, --output <path>  Output file path (default: README.md)");
+                eprintln!("  -h, --help           Show this help");
+                eprintln!();
+                eprintln!("If no JSON path is given, uses the latest file in benchmarks/");
+                std::process::exit(0);
+            }
+            _ => {
+                if args[i].starts_with('-') {
+                    eprintln!("Unknown flag: {}", args[i]);
+                    std::process::exit(1);
+                }
+                json_path = Some(args[i].clone());
+                i += 1;
+            }
+        }
+    }
+
     // Find the JSON file to use: explicit path or latest in benchmarks/
-    let json_path = if args.len() > 1 {
-        args[1].clone()
-    } else {
+    let json_path = json_path.unwrap_or_else(|| {
         find_latest_json("benchmarks").unwrap_or_else(|| {
             eprintln!("No JSON files found in benchmarks/");
-            eprintln!("Usage: gen-readme [path/to/benchmark.json]");
+            eprintln!("Usage: gen-readme [OPTIONS] [path/to/benchmark.json]");
             std::process::exit(1);
         })
-    };
+    });
 
     eprintln!("Reading: {}", json_path);
     let content = std::fs::read_to_string(&json_path).unwrap_or_else(|e| {
@@ -26,15 +60,30 @@ fn main() {
         std::process::exit(1);
     });
 
-    let mut lines: Vec<String> = Vec::new();
+    let md = generate_readme(&data, &json_path);
+    std::fs::write(&output_path, &md).unwrap();
+    println!("{}", md);
+    eprintln!("  -> {}", output_path);
+}
 
-    // Title
-    lines.push("# Solidity LSP Benchmarks".to_string());
-    lines.push(String::new());
-    lines.push("Benchmarks comparing Solidity LSP servers against Uniswap V4-core (`Pool.sol`, 618 lines).".to_string());
-    lines.push(String::new());
+// ---------------------------------------------------------------------------
+// README generation
+// ---------------------------------------------------------------------------
 
-    // Settings
+fn generate_readme(data: &Value, json_path: &str) -> String {
+    let mut l: Vec<String> = Vec::new();
+
+    // ── Title ──────────────────────────────────────────────────────────
+    l.push("# Solidity LSP Benchmarks".into());
+    l.push(String::new());
+    l.push(
+        "Benchmarks comparing Solidity LSP servers against Uniswap V4-core \
+         (`Pool.sol`, 618 lines)."
+            .into(),
+    );
+    l.push(String::new());
+
+    // ── Settings ───────────────────────────────────────────────────────
     if let Some(settings) = data.get("settings") {
         let iterations = settings
             .get("iterations")
@@ -46,179 +95,413 @@ fn main() {
             .and_then(|v| v.as_u64())
             .unwrap_or(0);
 
-        lines.push("## Settings".to_string());
-        lines.push(String::new());
-        lines.push("| Setting | Value |".to_string());
-        lines.push("|---------|-------|".to_string());
-        lines.push(format!("| Iterations | {} |", iterations));
-        lines.push(format!("| Warmup | {} |", warmup));
-        lines.push(format!("| Timeout | {}s |", timeout));
-        lines.push(String::new());
+        l.push("## Settings".into());
+        l.push(String::new());
+        l.push("| Setting | Value |".into());
+        l.push("|---------|-------|".into());
+        l.push(format!("| Iterations | {} |", iterations));
+        l.push(format!("| Warmup | {} |", warmup));
+        l.push(format!("| Timeout | {}s |", timeout));
+        l.push(String::new());
     }
 
-    // Servers
+    // ── Servers ────────────────────────────────────────────────────────
     if let Some(servers) = data.get("servers").and_then(|s| s.as_array()) {
-        lines.push("## Servers".to_string());
-        lines.push(String::new());
-        lines.push("| Server | Version |".to_string());
-        lines.push("|--------|---------|".to_string());
+        l.push("## Servers".into());
+        l.push(String::new());
+        l.push("| Server | Version |".into());
+        l.push("|--------|---------|".into());
         for srv in servers {
             let name = srv.get("name").and_then(|n| n.as_str()).unwrap_or("?");
             let version = srv.get("version").and_then(|v| v.as_str()).unwrap_or("?");
-            lines.push(format!("| {} | {} |", name, version));
+            l.push(format!("| {} | `{}` |", name, version));
         }
-        lines.push(String::new());
+        l.push(String::new());
     }
 
-    // Results table with medals and trophy
-    if let Some(benchmarks) = data.get("benchmarks").and_then(|b| b.as_array()) {
+    // ── Summary table (medals + trophy) ────────────────────────────────
+    let benchmarks = data.get("benchmarks").and_then(|b| b.as_array());
+    if let Some(benchmarks) = benchmarks {
         if !benchmarks.is_empty() {
-            // Collect server names from first benchmark
-            let server_names: Vec<&str> = benchmarks[0]
-                .get("servers")
-                .and_then(|s| s.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|s| s.get("server").and_then(|n| n.as_str()))
-                        .collect()
-                })
-                .unwrap_or_default();
-
+            let server_names = collect_server_names(benchmarks);
             let medal_icons = ["\u{1F947}", "\u{1F948}", "\u{1F949}"]; // 🥇🥈🥉
 
-            // Pre-compute medals per benchmark and count wins
+            // Pre-compute medals & wins
             let mut wins: HashMap<String, usize> = HashMap::new();
             let mut all_medals: Vec<Vec<&str>> = Vec::new();
 
             for bench in benchmarks {
-                let servers = bench.get("servers").and_then(|s| s.as_array());
-                if let Some(servers) = servers {
-                    // Rank valid servers by mean
-                    let mut ranked: Vec<(usize, f64)> = servers
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, s)| {
-                            let status = s.get("status").and_then(|v| v.as_str()).unwrap_or("");
-                            let response = s.get("response").and_then(|v| v.as_str()).unwrap_or("");
-                            status == "ok"
-                                && response != "null"
-                                && response != "no result"
-                                && !response.is_empty()
-                        })
-                        .filter_map(|(i, s)| {
-                            s.get("mean_ms").and_then(|v| v.as_f64()).map(|m| (i, m))
-                        })
-                        .collect();
-                    ranked.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-
-                    let mut row_medals = vec![""; servers.len()];
-                    for (place, (idx, _)) in ranked.iter().enumerate() {
-                        if place < medal_icons.len() {
-                            row_medals[*idx] = medal_icons[place];
-                        }
-                        if place == 0 {
-                            if let Some(name) = servers[*idx].get("server").and_then(|n| n.as_str())
-                            {
-                                *wins.entry(name.to_string()).or_insert(0) += 1;
-                            }
-                        }
-                    }
-                    all_medals.push(row_medals);
+                let (row_medals, winner) = rank_servers(bench, &medal_icons);
+                if let Some(name) = winner {
+                    *wins.entry(name).or_insert(0) += 1;
                 }
+                all_medals.push(row_medals);
             }
 
-            // Find overall winner
             let trophy_winner = wins
                 .iter()
-                .max_by_key(|(_, count)| *count)
-                .map(|(label, _)| label.clone());
+                .max_by_key(|(_, c)| *c)
+                .map(|(name, _)| name.clone());
 
-            // Header
-            lines.push("## Results".to_string());
-            lines.push(String::new());
+            l.push("## Results".into());
+            l.push(String::new());
 
+            // Header row
             let mut header = "| Benchmark |".to_string();
-            let mut separator = "|-----------|".to_string();
+            let mut sep = "|-----------|".to_string();
             for name in &server_names {
                 let trophy = if trophy_winner.as_deref() == Some(*name) {
-                    " \u{1F3C6}" // 🏆
+                    " \u{1F3C6}"
                 } else {
                     ""
                 };
                 header.push_str(&format!(" {}{} |", name, trophy));
-                separator.push_str(&"-".repeat(name.len() + trophy.len() + 2));
-                separator.push('|');
+                sep.push_str(&"-".repeat(name.len() + trophy.len() + 2));
+                sep.push('|');
             }
-            lines.push(header);
-            lines.push(separator);
+            l.push(header);
+            l.push(sep);
 
-            // Rows
+            // Data rows
             for (i, bench) in benchmarks.iter().enumerate() {
                 let bench_name = bench.get("name").and_then(|n| n.as_str()).unwrap_or("?");
-                let mut row = format!("| {} |", bench_name);
+                let mut row = format!("| [{}](#{}) |", bench_name, slug(bench_name));
 
                 if let Some(servers) = bench.get("servers").and_then(|s| s.as_array()) {
                     for (j, srv) in servers.iter().enumerate() {
-                        let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
-                        let cell = match status {
-                            "ok" => {
-                                let mean =
-                                    srv.get("mean_ms").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                                let medal = if i < all_medals.len() && j < all_medals[i].len() {
-                                    all_medals[i][j]
-                                } else {
-                                    ""
-                                };
-                                let suffix = if medal.is_empty() {
-                                    "".to_string()
-                                } else {
-                                    format!(" {}", medal)
-                                };
-                                format!(" {:.1}ms{} |", mean, suffix)
-                            }
-                            "invalid" => {
-                                let response =
-                                    srv.get("response").and_then(|v| v.as_str()).unwrap_or("");
-                                if response.contains("Unknown method")
-                                    || response.contains("unsupported")
-                                {
-                                    " unsupported |".to_string()
-                                } else {
-                                    " - |".to_string()
-                                }
-                            }
-                            _ => {
-                                let error = srv.get("error").and_then(|v| v.as_str()).unwrap_or("");
-                                if error.contains("timeout") {
-                                    " timeout |".to_string()
-                                } else {
-                                    " FAIL |".to_string()
-                                }
-                            }
-                        };
+                        let cell = format_summary_cell(srv, i, j, &all_medals);
                         row.push_str(&cell);
                     }
                 }
-                lines.push(row);
+                l.push(row);
             }
-            lines.push(String::new());
+            l.push(String::new());
+
+            // ── Winner summary ─────────────────────────────────────────
+            if let Some(ref winner) = trophy_winner {
+                let total = benchmarks.len();
+                let gold = wins.get(winner.as_str()).copied().unwrap_or(0);
+
+                // Count silver/bronze per server
+                let mut silvers: HashMap<String, usize> = HashMap::new();
+                let mut bronzes: HashMap<String, usize> = HashMap::new();
+                for row in &all_medals {
+                    for (idx, medal) in row.iter().enumerate() {
+                        if let Some(name) = server_names.get(idx) {
+                            match *medal {
+                                "\u{1F948}" => *silvers.entry(name.to_string()).or_insert(0) += 1,
+                                "\u{1F949}" => *bronzes.entry(name.to_string()).or_insert(0) += 1,
+                                _ => {}
+                            }
+                        }
+                    }
+                }
+
+                l.push(format!(
+                    "> **\u{1F3C6} Overall Winner: {}** \u{2014} {} \u{1F947} out of {} benchmarks",
+                    winner, gold, total,
+                ));
+                l.push(String::new());
+
+                // Medal tally table
+                l.push("### Medal Tally".into());
+                l.push(String::new());
+                l.push(
+                    "| Server | \u{1F947} Gold | \u{1F948} Silver | \u{1F949} Bronze | Score |"
+                        .into(),
+                );
+                l.push("|--------|------|----------|----------|-------|".into());
+
+                // Build rows sorted by weighted score (gold=3, silver=2, bronze=1)
+                let mut tally: Vec<(&str, usize, usize, usize)> = server_names
+                    .iter()
+                    .map(|name| {
+                        let g = wins.get(*name).copied().unwrap_or(0);
+                        let s = silvers.get(*name).copied().unwrap_or(0);
+                        let b = bronzes.get(*name).copied().unwrap_or(0);
+                        (*name, g, s, b)
+                    })
+                    .collect();
+                tally.sort_by(|a, b| {
+                    let score_a = a.1 * 3 + a.2 * 2 + a.3;
+                    let score_b = b.1 * 3 + b.2 * 2 + b.3;
+                    score_b.cmp(&score_a)
+                });
+
+                for (name, g, s, b) in &tally {
+                    let score = g * 3 + s * 2 + b;
+                    let marker = if trophy_winner.as_deref() == Some(*name) {
+                        " \u{1F3C6}"
+                    } else {
+                        ""
+                    };
+                    l.push(format!(
+                        "| **{}**{} | {} | {} | {} | {} |",
+                        name, marker, g, s, b, score
+                    ));
+                }
+                l.push(String::new());
+            }
+
+            // ── Feature support matrix ─────────────────────────────────
+            l.push("## Feature Support".into());
+            l.push(String::new());
+
+            let mut header = "| Feature |".to_string();
+            let mut sep = "|---------|".to_string();
+            for name in &server_names {
+                header.push_str(&format!(" {} |", name));
+                sep.push_str(&"-".repeat(name.len() + 2));
+                sep.push('|');
+            }
+            l.push(header);
+            l.push(sep);
+
+            for bench in benchmarks.iter() {
+                let bench_name = bench.get("name").and_then(|n| n.as_str()).unwrap_or("?");
+                let mut row = format!("| {} |", bench_name);
+                if let Some(servers) = bench.get("servers").and_then(|s| s.as_array()) {
+                    for srv in servers {
+                        let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                        let response = srv.get("response").and_then(|v| v.as_str()).unwrap_or("");
+                        let error = srv.get("error").and_then(|v| v.as_str()).unwrap_or("");
+                        let icon = if status == "ok"
+                            && response != "null"
+                            && response != "[]"
+                            && !response.is_empty()
+                        {
+                            "\u{2705}" // ✅
+                        } else if response.contains("Unknown method")
+                            || response.contains("unsupported")
+                        {
+                            "\u{274C}" // ❌
+                        } else if error.contains("timeout") {
+                            "\u{23F3}" // ⏳
+                        } else if status == "ok" {
+                            "\u{26A0}\u{FE0F}" // ⚠️ (returned empty/null)
+                        } else {
+                            "\u{274C}" // ❌
+                        };
+                        row.push_str(&format!(" {} |", icon));
+                    }
+                }
+                l.push(row);
+            }
+            l.push(String::new());
+            l.push(
+                "> \u{2705} = valid response \u{2003} \
+                 \u{26A0}\u{FE0F} = empty/null result \u{2003} \
+                 \u{23F3} = timeout \u{2003} \
+                 \u{274C} = unsupported / failed"
+                    .into(),
+            );
+            l.push(String::new());
+
+            // ── Per-benchmark detail sections ──────────────────────────
+            l.push("---".into());
+            l.push(String::new());
+            l.push("## Detailed Results".into());
+            l.push(String::new());
+
+            for bench in benchmarks.iter() {
+                let bench_name = bench.get("name").and_then(|n| n.as_str()).unwrap_or("?");
+                l.push(format!("### {}", bench_name));
+                l.push(String::new());
+
+                if let Some(servers) = bench.get("servers").and_then(|s| s.as_array()) {
+                    // Latency table
+                    l.push("| Server | Status | Mean | P50 | P95 |".into());
+                    l.push("|--------|--------|------|-----|-----|".into());
+                    for srv in servers {
+                        let name = srv.get("server").and_then(|v| v.as_str()).unwrap_or("?");
+                        let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
+                        let status_display = match status {
+                            "ok" => "\u{2705} ok".to_string(),
+                            "invalid" => "\u{26A0}\u{FE0F} invalid".to_string(),
+                            _ => {
+                                let err =
+                                    srv.get("error").and_then(|v| v.as_str()).unwrap_or("fail");
+                                format!("\u{274C} {}", err)
+                            }
+                        };
+                        let mean = format_ms(srv.get("mean_ms"));
+                        let p50 = format_ms(srv.get("p50_ms"));
+                        let p95 = format_ms(srv.get("p95_ms"));
+                        l.push(format!(
+                            "| **{}** | {} | {} | {} | {} |",
+                            name, status_display, mean, p50, p95
+                        ));
+                    }
+                    l.push(String::new());
+
+                    // Response details per server
+                    l.push("<details>".into());
+                    l.push("<summary>Response details</summary>".into());
+                    l.push(String::new());
+                    for srv in servers {
+                        let name = srv.get("server").and_then(|v| v.as_str()).unwrap_or("?");
+                        let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
+
+                        l.push(format!("**{}**", name));
+                        l.push(String::new());
+
+                        match status {
+                            "ok" | "invalid" => {
+                                let response = srv
+                                    .get("response")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("(no response)");
+                                l.push("```json".into());
+                                l.push(response.to_string());
+                                l.push("```".into());
+                            }
+                            _ => {
+                                let error = srv
+                                    .get("error")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("unknown error");
+                                l.push(format!("Error: `{}`", error));
+                            }
+                        }
+                        l.push(String::new());
+                    }
+                    l.push("</details>".into());
+                    l.push(String::new());
+                }
+            }
         }
     }
 
-    // Footer
+    // ── Footer ─────────────────────────────────────────────────────────
+    l.push("---".into());
+    l.push(String::new());
     if let Some(ts) = data.get("timestamp").and_then(|t| t.as_str()) {
-        lines.push(format!("*Generated from `{}`*", json_path));
-        lines.push(format!("*Benchmark run: {}*", ts));
-        lines.push(String::new());
+        l.push(format!(
+            "*Generated from [`{}`]({}) — benchmark run: {}*",
+            json_path, json_path, ts
+        ));
+        l.push(String::new());
     }
 
-    lines.push("See [DOCS.md](./DOCS.md) for usage and installation.".to_string());
-    lines.push(String::new());
+    l.push("See [DOCS.md](./DOCS.md) for usage and installation.".into());
+    l.push(String::new());
 
-    let out = lines.join("\n");
-    std::fs::write("README.md", &out).unwrap();
-    println!("{}", out);
-    eprintln!("  -> README.md");
+    l.join("\n")
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Collect server names from the first benchmark entry.
+fn collect_server_names<'a>(benchmarks: &'a [Value]) -> Vec<&'a str> {
+    benchmarks[0]
+        .get("servers")
+        .and_then(|s| s.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|s| s.get("server").and_then(|n| n.as_str()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Rank servers by mean latency. Returns (medals_vec, winner_name).
+fn rank_servers<'a>(bench: &Value, medal_icons: &[&'a str]) -> (Vec<&'a str>, Option<String>) {
+    let servers = match bench.get("servers").and_then(|s| s.as_array()) {
+        Some(s) => s,
+        None => return (vec![], None),
+    };
+
+    let mut ranked: Vec<(usize, f64)> = servers
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| is_valid_result(s))
+        .filter_map(|(i, s)| s.get("mean_ms").and_then(|v| v.as_f64()).map(|m| (i, m)))
+        .collect();
+    ranked.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+    let mut row_medals = vec![""; servers.len()];
+    let mut winner = None;
+    for (place, (idx, _)) in ranked.iter().enumerate() {
+        if place < medal_icons.len() {
+            row_medals[*idx] = medal_icons[place];
+        }
+        if place == 0 {
+            winner = servers[*idx]
+                .get("server")
+                .and_then(|n| n.as_str())
+                .map(|s| s.to_string());
+        }
+    }
+    (row_medals, winner)
+}
+
+/// Check if a server result is valid (ok status + non-empty, non-null response).
+fn is_valid_result(srv: &Value) -> bool {
+    let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    let response = srv.get("response").and_then(|v| v.as_str()).unwrap_or("");
+    status == "ok" && response != "null" && response != "no result" && !response.is_empty()
+}
+
+/// Format a summary table cell.
+fn format_summary_cell(
+    srv: &Value,
+    bench_idx: usize,
+    srv_idx: usize,
+    all_medals: &[Vec<&str>],
+) -> String {
+    let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    match status {
+        "ok" => {
+            let mean = srv.get("mean_ms").and_then(|v| v.as_f64()).unwrap_or(0.0);
+            let medal = if bench_idx < all_medals.len() && srv_idx < all_medals[bench_idx].len() {
+                all_medals[bench_idx][srv_idx]
+            } else {
+                ""
+            };
+            let suffix = if medal.is_empty() {
+                String::new()
+            } else {
+                format!(" {}", medal)
+            };
+            format!(" {:.1}ms{} |", mean, suffix)
+        }
+        "invalid" => {
+            let response = srv.get("response").and_then(|v| v.as_str()).unwrap_or("");
+            if response.contains("Unknown method") || response.contains("unsupported") {
+                " unsupported |".to_string()
+            } else {
+                " - |".to_string()
+            }
+        }
+        _ => {
+            let error = srv.get("error").and_then(|v| v.as_str()).unwrap_or("");
+            if error.contains("timeout") {
+                " timeout |".to_string()
+            } else {
+                " FAIL |".to_string()
+            }
+        }
+    }
+}
+
+/// Format an optional millisecond value.
+fn format_ms(val: Option<&Value>) -> String {
+    match val.and_then(|v| v.as_f64()) {
+        Some(ms) => format!("{:.1}ms", ms),
+        None => "-".to_string(),
+    }
+}
+
+/// Convert a benchmark name to a markdown anchor slug.
+fn slug(name: &str) -> String {
+    name.to_lowercase()
+        .replace(' ', "-")
+        .replace('+', "")
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-')
+        .collect()
 }
 
 /// Find the most recent .json file in the given directory (non-recursive).

@@ -1,5 +1,12 @@
 # Documentation
 
+This project produces two binaries:
+
+| Binary | Source | Purpose |
+|--------|--------|---------|
+| `bench` | `src/main.rs` | Run LSP benchmarks, produce JSON snapshots |
+| `gen-readme` | `src/gen_readme.rs` | Read a JSON snapshot, generate `README.md` |
+
 ## Prerequisites
 
 - [solidity-language-server](https://github.com/mmsaki/solidity-language-server): `cargo install solidity-language-server`
@@ -55,8 +62,10 @@ bench all -t 10             # Run all benchmarks with 10s timeout
 After running benchmarks, generate the README from JSON data:
 
 ```sh
-./target/release/gen-readme                           # uses latest JSON in benchmarks/
-./target/release/gen-readme benchmarks/2026-02-12.json # use a specific snapshot
+./target/release/gen-readme                                        # uses latest JSON in benchmarks/
+./target/release/gen-readme benchmarks/2026-02-13T01-45-26Z.json   # use a specific snapshot
+./target/release/gen-readme -o results.md                          # custom output path
+./target/release/gen-readme --help                                 # show help
 ```
 
 ## Output
@@ -66,4 +75,9 @@ After running benchmarks, generate the README from JSON data:
 - `benchmarks/<timestamp>.json` — full runs
 - `benchmarks/<names>/<timestamp>.json` — partial runs (e.g. `benchmarks/diagnostics/`)
 
-`gen-readme` reads a JSON snapshot and writes `README.md` with medals, trophy, and results table.
+`gen-readme` reads a JSON snapshot and writes `README.md` with:
+- Summary results table with medals (🥇🥈🥉) and trophy (🏆)
+- Medal tally and overall winner
+- Feature support matrix
+- Detailed per-benchmark latency tables (mean/p50/p95)
+- Collapsible response details showing actual server responses
