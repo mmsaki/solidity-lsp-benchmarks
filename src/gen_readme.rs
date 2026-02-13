@@ -57,14 +57,19 @@ fn main() {
     }
     let output_path = output_path.unwrap_or_else(|| "README.md".to_string());
 
-    // Find the JSON file to use: explicit path or latest in benchmarks/
-    let json_path = json_path.unwrap_or_else(|| {
-        find_latest_json("benchmarks").unwrap_or_else(|| {
+    // Find the JSON file to use: explicit path, directory, or latest in benchmarks/
+    let json_path = match json_path {
+        Some(p) if Path::new(&p).is_dir() => find_latest_json(&p).unwrap_or_else(|| {
+            eprintln!("No JSON files found in {}/", p);
+            std::process::exit(1);
+        }),
+        Some(p) => p,
+        None => find_latest_json("benchmarks").unwrap_or_else(|| {
             eprintln!("No JSON files found in benchmarks/");
             eprintln!("Usage: gen-readme [OPTIONS] [path/to/benchmark.json]");
             std::process::exit(1);
-        })
-    });
+        }),
+    };
 
     eprintln!("Reading: {}", json_path);
     let content = std::fs::read_to_string(&json_path).unwrap_or_else(|e| {

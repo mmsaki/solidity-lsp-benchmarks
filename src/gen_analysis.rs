@@ -68,13 +68,18 @@ fn main() {
     }
     let output_path = output_path.unwrap_or_else(|| "ANALYSIS.md".to_string());
 
-    let json_path = json_path.unwrap_or_else(|| {
-        find_latest_json("benchmarks").unwrap_or_else(|| {
+    let json_path = match json_path {
+        Some(p) if Path::new(&p).is_dir() => find_latest_json(&p).unwrap_or_else(|| {
+            eprintln!("No JSON files found in {}/", p);
+            std::process::exit(1);
+        }),
+        Some(p) => p,
+        None => find_latest_json("benchmarks").unwrap_or_else(|| {
             eprintln!("No JSON files found in benchmarks/");
             eprintln!("Usage: gen-analysis [OPTIONS] [path/to/benchmark.json]");
             std::process::exit(1);
-        })
-    });
+        }),
+    };
 
     eprintln!("Reading: {}", json_path);
     let content = std::fs::read_to_string(&json_path).unwrap_or_else(|e| {
@@ -135,90 +140,22 @@ fn generate_analysis(data: &Value, json_path: &str, lead_override: Option<&str>)
 
     let server_names = collect_server_names(benchmarks);
 
-    // ── 1. Consistency: p50/p95 spread ──────────────────────────────────
-    l.push("## Consistency (p50 vs p95 Spread)".into());
-    l.push(String::new());
-    l.push("How much latency varies between typical and worst-case iterations. Lower spread = more predictable.".into());
-    l.push(String::new());
-
-    l.push("| Benchmark | Server | p50 | p95 | Spread | Spike |".into());
-    l.push("|-----------|--------|-----|-----|--------|-------|".into());
-
-    for bench in benchmarks {
-        let bench_name = bench.get("name").and_then(|n| n.as_str()).unwrap_or("?");
-        if let Some(servers) = bench.get("servers").and_then(|s| s.as_array()) {
-            for srv in servers {
-                let name = srv.get("server").and_then(|v| v.as_str()).unwrap_or("?");
-                let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
-                if status != "ok" {
-                    continue;
-                }
-                let p50 = srv.get("p50_ms").and_then(|v| v.as_f64());
-                let p95 = srv.get("p95_ms").and_then(|v| v.as_f64());
-                if let (Some(p50), Some(p95)) = (p50, p95) {
-                    let spread = p95 - p50;
-                    let spike = if p50 > 0.0 { p95 / p50 } else { 1.0 };
-                    let spread_flag = if spread > 10.0 {
-                        format!("**{:.1}ms**", spread)
-                    } else {
-                        format!("{:.1}ms", spread)
-                    };
-                    let spike_flag = if spike > 1.5 {
-                        format!("**{:.2}x**", spike)
-                    } else {
-                        format!("{:.2}x", spike)
-                    };
-                    l.push(format!(
-                        "| {} | {} | {:.1}ms | {:.1}ms | {} | {} |",
-                        bench_name, name, p50, p95, spread_flag, spike_flag
-                    ));
-                }
-            }
+    // ── Resolve base server for head-to-head ─────────────────────────────
+    let lead_name: Option<&str> = if let Some(override_name) = lead_override {
+        if server_names.iter().any(|n| *n == override_name) {
+            Some(override_name)
+        } else {
+            eprintln!(
+                "Warning: --base '{}' not found in servers, using first server",
+                override_name
+            );
+            server_names.first().copied()
         }
-    }
-    l.push(String::new());
+    } else {
+        server_names.first().copied()
+    };
 
-    // ── 2. Per-iteration range ──────────────────────────────────────────
-    l.push("## Per-Iteration Range".into());
-    l.push(String::new());
-    l.push("Min and max latency across all measured iterations. Shows the full range of observed performance.".into());
-    l.push(String::new());
-
-    l.push("| Benchmark | Server | Min | Max | Range |".into());
-    l.push("|-----------|--------|-----|-----|-------|".into());
-
-    for bench in benchmarks {
-        let bench_name = bench.get("name").and_then(|n| n.as_str()).unwrap_or("?");
-        if let Some(servers) = bench.get("servers").and_then(|s| s.as_array()) {
-            for srv in servers {
-                let name = srv.get("server").and_then(|v| v.as_str()).unwrap_or("?");
-                if let Some(iterations) = srv.get("iterations").and_then(|v| v.as_array()) {
-                    let latencies: Vec<f64> = iterations
-                        .iter()
-                        .filter_map(|it| it.get("ms").and_then(|v| v.as_f64()))
-                        .collect();
-                    if latencies.is_empty() {
-                        continue;
-                    }
-                    let min = latencies.iter().cloned().fold(f64::INFINITY, f64::min);
-                    let max = latencies.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-                    let range = max - min;
-                    let range_flag = if range > 10.0 {
-                        format!("**{:.2}ms**", range)
-                    } else {
-                        format!("{:.2}ms", range)
-                    };
-                    l.push(format!(
-                        "| {} | {} | {:.2}ms | {:.2}ms | {} |",
-                        bench_name, name, min, max, range_flag
-                    ));
-                }
-            }
-        }
-    }
-    l.push(String::new());
-
-    // ── 3. Capability matrix ────────────────────────────────────────────
+    // ── 1. Capability Matrix (global) ────────────────────────────────────
     l.push("## Capability Matrix".into());
     l.push(String::new());
 
@@ -237,25 +174,7 @@ fn generate_analysis(data: &Value, json_path: &str, lead_override: Option<&str>)
         let mut row = format!("| {} |", bench_name);
         if let Some(servers) = bench.get("servers").and_then(|s| s.as_array()) {
             for srv in servers {
-                let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
-                let response = srv.get("response").and_then(|v| v.as_str()).unwrap_or("");
-                let error = srv.get("error").and_then(|v| v.as_str()).unwrap_or("");
-                let cell = match status {
-                    "ok" if response != "null" && response != "[]" && !response.is_empty() => "ok",
-                    "ok" | "invalid"
-                        if response.contains("Unknown method")
-                            || response.contains("unsupported") =>
-                    {
-                        "no"
-                    }
-                    "ok" | "invalid" => "empty",
-                    _ if error.contains("timeout")
-                        || error.contains("wait_for_diagnostics: timeout") =>
-                    {
-                        "timeout"
-                    }
-                    _ => "crash",
-                };
+                let cell = server_status_label(srv);
                 row.push_str(&format!(" {} |", cell));
             }
         }
@@ -265,8 +184,6 @@ fn generate_analysis(data: &Value, json_path: &str, lead_override: Option<&str>)
 
     // Capability summary
     let total_benchmarks = benchmarks.len();
-    l.push("**Summary:**".into());
-    l.push(String::new());
     l.push("| Server | Working | Failed | Success Rate |".into());
     l.push("|--------|---------|--------|--------------|".into());
 
@@ -280,13 +197,7 @@ fn generate_analysis(data: &Value, json_path: &str, lead_override: Option<&str>)
                     if srv_name != *name {
                         continue;
                     }
-                    let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
-                    let response = srv.get("response").and_then(|v| v.as_str()).unwrap_or("");
-                    if status == "ok"
-                        && response != "null"
-                        && response != "[]"
-                        && !response.is_empty()
-                    {
+                    if server_status_label(srv) == "ok" {
                         ok_count += 1;
                     } else {
                         fail_count += 1;
@@ -306,76 +217,237 @@ fn generate_analysis(data: &Value, json_path: &str, lead_override: Option<&str>)
     }
     l.push(String::new());
 
-    // ── 4. Overhead comparison ──────────────────────────────────────────
-    l.push("## Overhead Comparison".into());
-    l.push(String::new());
-    l.push("How each server's mean latency compares to the fastest server per benchmark.".into());
-    l.push(String::new());
-
-    l.push("| Benchmark | Server | Mean | vs Fastest | Overhead |".into());
-    l.push("|-----------|--------|------|------------|----------|".into());
-
+    // ── 2. Per-feature sections ──────────────────────────────────────────
     for bench in benchmarks {
         let bench_name = bench.get("name").and_then(|n| n.as_str()).unwrap_or("?");
-        if let Some(servers) = bench.get("servers").and_then(|s| s.as_array()) {
-            // Find the fastest ok server
-            let fastest: Option<f64> = servers
-                .iter()
-                .filter(|s| {
-                    s.get("status").and_then(|v| v.as_str()).unwrap_or("") == "ok"
-                        && s.get("response").and_then(|v| v.as_str()).unwrap_or("") != "null"
-                })
-                .filter_map(|s| s.get("mean_ms").and_then(|v| v.as_f64()))
-                .fold(None, |min, val| Some(min.map_or(val, |m: f64| m.min(val))));
+        let servers = match bench.get("servers").and_then(|s| s.as_array()) {
+            Some(s) => s,
+            None => continue,
+        };
 
-            let fastest_ms = match fastest {
-                Some(f) => f,
-                None => continue,
+        l.push(format!("## {}", bench_name));
+        l.push(String::new());
+
+        // Find fastest mean among ok servers (for overhead calc)
+        let fastest_mean: Option<f64> = servers
+            .iter()
+            .filter(|s| server_status_label(s) == "ok")
+            .filter_map(|s| s.get("mean_ms").and_then(|v| v.as_f64()))
+            .fold(None, |min, val| Some(min.map_or(val, |m: f64| m.min(val))));
+
+        // Check what data is available for this benchmark
+        let has_p50 = servers
+            .iter()
+            .any(|s| s.get("p50_ms").and_then(|v| v.as_f64()).is_some());
+        let has_iterations = servers
+            .iter()
+            .any(|s| s.get("iterations").and_then(|v| v.as_array()).is_some());
+        let has_rss = servers
+            .iter()
+            .any(|s| s.get("rss_kb").and_then(|v| v.as_u64()).is_some());
+
+        // Build dynamic columns
+        // Always: Server, Status, Mean
+        // Conditional: p50, p95, Spread, Spike (if p50 exists)
+        // Conditional: Min, Max, Range (if iterations exist)
+        // Conditional: Overhead (if fastest_mean exists and >1 ok server)
+        // Conditional: RSS (if rss data exists)
+        // Conditional: vs Base (if lead_name set and >1 server)
+        let ok_count = servers
+            .iter()
+            .filter(|s| server_status_label(s) == "ok")
+            .count();
+        let show_overhead = fastest_mean.is_some() && ok_count > 1;
+        let show_h2h = lead_name.is_some() && server_names.len() > 1;
+
+        let mut hdr = "| Server | Status | Mean |".to_string();
+        let mut div = "|--------|--------|------|".to_string();
+        if has_p50 {
+            hdr.push_str(" p50 | p95 | Spread | Spike |");
+            div.push_str("-----|-----|--------|-------|");
+        }
+        if has_iterations {
+            hdr.push_str(" Min | Max | Range |");
+            div.push_str("-----|-----|-------|");
+        }
+        if show_overhead {
+            hdr.push_str(" Overhead |");
+            div.push_str("----------|");
+        }
+        if has_rss {
+            hdr.push_str(" RSS |");
+            div.push_str("-----|");
+        }
+        if show_h2h {
+            hdr.push_str(&format!(" vs {} |", lead_name.unwrap()));
+            div.push_str(&"-".repeat(lead_name.unwrap().len() + 5));
+            div.push('|');
+        }
+        l.push(hdr);
+        l.push(div);
+
+        // Find lead server's mean for head-to-head
+        let lead_mean: Option<f64> = lead_name.and_then(|lead| {
+            servers
+                .iter()
+                .find(|s| s.get("server").and_then(|v| v.as_str()).unwrap_or("") == lead)
+                .filter(|s| server_status_label(s) == "ok")
+                .and_then(|s| s.get("mean_ms").and_then(|v| v.as_f64()))
+        });
+
+        for srv in servers {
+            let name = srv.get("server").and_then(|v| v.as_str()).unwrap_or("?");
+            let status_label = server_status_label(srv);
+            let mean = srv.get("mean_ms").and_then(|v| v.as_f64());
+
+            let mean_str = match mean {
+                Some(m) if status_label == "ok" => format!("{:.2}ms", m),
+                _ => "-".to_string(),
             };
 
-            for srv in servers {
-                let name = srv.get("server").and_then(|v| v.as_str()).unwrap_or("?");
-                let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
-                if status != "ok" {
-                    let error = srv.get("error").and_then(|v| v.as_str()).unwrap_or("");
-                    let reason = if error.contains("timeout") {
-                        "timeout"
-                    } else if status == "invalid" {
-                        "empty"
-                    } else {
-                        "crash"
-                    };
-                    l.push(format!(
-                        "| {} | {} | {} | - | - |",
-                        bench_name, name, reason
-                    ));
-                    continue;
-                }
-                let mean = srv.get("mean_ms").and_then(|v| v.as_f64()).unwrap_or(0.0);
-                let overhead = if fastest_ms > 0.0 {
-                    mean / fastest_ms
-                } else {
-                    1.0
-                };
-                let overhead_str = if (overhead - 1.0).abs() < 0.01 {
-                    "**1.0x (fastest)**".to_string()
-                } else if overhead > 10.0 {
-                    format!("**{:.1}x**", overhead)
-                } else {
-                    format!("{:.1}x", overhead)
-                };
-                l.push(format!(
-                    "| {} | {} | {:.2}ms | {:.2}ms | {} |",
-                    bench_name, name, mean, fastest_ms, overhead_str
-                ));
-            }
-        }
-    }
-    l.push(String::new());
+            let mut row = format!("| {} | {} | {} |", name, status_label, mean_str);
 
-    // ── 5. Memory usage (RSS) ──────────────────────────────────────────
-    // Check if any server has rss_kb data
-    let has_rss = benchmarks.iter().any(|bench| {
+            // p50/p95/spread/spike
+            if has_p50 {
+                let p50 = srv.get("p50_ms").and_then(|v| v.as_f64());
+                let p95 = srv.get("p95_ms").and_then(|v| v.as_f64());
+                match (p50, p95) {
+                    (Some(p50v), Some(p95v)) => {
+                        let spread = p95v - p50v;
+                        let spike = if p50v > 0.0 { p95v / p50v } else { 1.0 };
+                        let spread_str = if spread > 10.0 {
+                            format!("**{:.1}ms**", spread)
+                        } else {
+                            format!("{:.1}ms", spread)
+                        };
+                        let spike_str = if spike > 1.5 {
+                            format!("**{:.2}x**", spike)
+                        } else {
+                            format!("{:.2}x", spike)
+                        };
+                        row.push_str(&format!(
+                            " {:.1}ms | {:.1}ms | {} | {} |",
+                            p50v, p95v, spread_str, spike_str
+                        ));
+                    }
+                    _ => {
+                        row.push_str(" - | - | - | - |");
+                    }
+                }
+            }
+
+            // min/max/range from iterations
+            if has_iterations {
+                if let Some(iterations) = srv.get("iterations").and_then(|v| v.as_array()) {
+                    let latencies: Vec<f64> = iterations
+                        .iter()
+                        .filter_map(|it| it.get("ms").and_then(|v| v.as_f64()))
+                        .collect();
+                    if latencies.is_empty() {
+                        row.push_str(" - | - | - |");
+                    } else {
+                        let min = latencies.iter().cloned().fold(f64::INFINITY, f64::min);
+                        let max = latencies.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                        let range = max - min;
+                        let range_str = if range > 10.0 {
+                            format!("**{:.2}ms**", range)
+                        } else {
+                            format!("{:.2}ms", range)
+                        };
+                        row.push_str(&format!(" {:.2}ms | {:.2}ms | {} |", min, max, range_str));
+                    }
+                } else {
+                    row.push_str(" - | - | - |");
+                }
+            }
+
+            // overhead vs fastest
+            if show_overhead {
+                if let (Some(m), Some(f)) = (mean, fastest_mean) {
+                    if status_label == "ok" {
+                        let overhead = if f > 0.0 { m / f } else { 1.0 };
+                        let overhead_str = if (overhead - 1.0).abs() < 0.01 {
+                            "**1.0x (fastest)**".to_string()
+                        } else if overhead > 10.0 {
+                            format!("**{:.1}x**", overhead)
+                        } else {
+                            format!("{:.1}x", overhead)
+                        };
+                        row.push_str(&format!(" {} |", overhead_str));
+                    } else {
+                        row.push_str(" - |");
+                    }
+                } else {
+                    row.push_str(" - |");
+                }
+            }
+
+            // RSS
+            if has_rss {
+                if let Some(rss) = srv.get("rss_kb").and_then(|v| v.as_u64()) {
+                    let mb = rss as f64 / 1024.0;
+                    row.push_str(&format!(" {:.1} MB |", mb));
+                } else {
+                    row.push_str(" - |");
+                }
+            }
+
+            // head-to-head vs base
+            if show_h2h {
+                let is_lead = lead_name.map_or(false, |lead| name == lead);
+                if is_lead {
+                    row.push_str(" - |");
+                } else {
+                    let srv_mean = if status_label == "ok" { mean } else { None };
+                    let error = srv.get("error").and_then(|v| v.as_str()).unwrap_or("");
+                    match (lead_mean, srv_mean) {
+                        (Some(lm), Some(cm)) => {
+                            if lm <= 0.0 || cm <= 0.0 || (lm - cm).abs() < 0.01 {
+                                row.push_str(" tied |");
+                            } else if cm < lm {
+                                // This server is faster than base
+                                let factor = lm / cm;
+                                if factor > 10.0 {
+                                    row.push_str(&format!(" **{:.1}x faster** |", factor));
+                                } else {
+                                    row.push_str(&format!(" {:.1}x faster |", factor));
+                                }
+                            } else {
+                                // This server is slower than base
+                                let factor = cm / lm;
+                                if factor > 10.0 {
+                                    row.push_str(&format!(" **{:.1}x slower** |", factor));
+                                } else {
+                                    row.push_str(&format!(" {:.1}x slower |", factor));
+                                }
+                            }
+                        }
+                        (Some(_), None) => {
+                            if error.contains("timeout") {
+                                row.push_str(" timeout |");
+                            } else if status_label == "empty" || status_label == "no" {
+                                row.push_str(" empty |");
+                            } else {
+                                row.push_str(" crash |");
+                            }
+                        }
+                        (None, Some(_)) => {
+                            row.push_str(" base failed |");
+                        }
+                        (None, None) => {
+                            row.push_str(" both failed |");
+                        }
+                    }
+                }
+            }
+
+            l.push(row);
+        }
+        l.push(String::new());
+    }
+
+    // ── 3. Peak Memory Summary (global, only if RSS data exists) ─────────
+    let has_any_rss = benchmarks.iter().any(|bench| {
         bench
             .get("servers")
             .and_then(|s| s.as_array())
@@ -387,48 +459,13 @@ fn generate_analysis(data: &Value, json_path: &str, lead_override: Option<&str>)
             .unwrap_or(false)
     });
 
-    if has_rss {
-        l.push("## Memory Usage (RSS)".into());
-        l.push(String::new());
-        l.push(
-            "Resident Set Size measured after indexing (post-diagnostics). Shows how much memory each server holds in RAM."
-                .into(),
-        );
+    if has_any_rss {
+        l.push("## Peak Memory (RSS)".into());
         l.push(String::new());
 
-        l.push("| Benchmark | Server | Status | RSS |".into());
-        l.push("|-----------|--------|--------|-----|".into());
-
-        for bench in benchmarks {
-            let bench_name = bench.get("name").and_then(|n| n.as_str()).unwrap_or("?");
-            if let Some(servers) = bench.get("servers").and_then(|s| s.as_array()) {
-                for srv in servers {
-                    let name = srv.get("server").and_then(|v| v.as_str()).unwrap_or("?");
-                    if let Some(rss) = srv.get("rss_kb").and_then(|v| v.as_u64()) {
-                        let mb = rss as f64 / 1024.0;
-                        let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("?");
-                        let error = srv.get("error").and_then(|v| v.as_str()).unwrap_or("");
-                        let status_str = match status {
-                            "ok" => "ok".to_string(),
-                            "invalid" => "empty".to_string(),
-                            _ if error.contains("timeout") => "timeout".to_string(),
-                            _ => "crash".to_string(),
-                        };
-                        l.push(format!(
-                            "| {} | {} | {} | {:.1} MB |",
-                            bench_name, name, status_str, mb
-                        ));
-                    }
-                }
-            }
-        }
-        l.push(String::new());
-
-        // Summary: peak RSS per server across all benchmarks
-        l.push("**Peak RSS per server:**".into());
-        l.push(String::new());
-        l.push("| Server | Peak RSS |".into());
-        l.push("|--------|----------|".into());
+        let mut peak_header = "|".to_string();
+        let mut peak_sep = "|".to_string();
+        let mut peak_row = "|".to_string();
         for sname in &server_names {
             let mut peak: Option<u64> = None;
             for bench in benchmarks {
@@ -443,127 +480,20 @@ fn generate_analysis(data: &Value, json_path: &str, lead_override: Option<&str>)
                     }
                 }
             }
+            peak_header.push_str(&format!(" {} |", sname));
+            peak_sep.push_str(&"-".repeat(sname.len() + 2));
+            peak_sep.push('|');
             if let Some(p) = peak {
                 let mb = p as f64 / 1024.0;
-                l.push(format!("| {} | {:.1} MB |", sname, mb));
+                peak_row.push_str(&format!(" {:.1} MB |", mb));
+            } else {
+                peak_row.push_str(" - |");
             }
         }
+        l.push(peak_header);
+        l.push(peak_sep);
+        l.push(peak_row);
         l.push(String::new());
-    }
-
-    // ── 6. Head-to-head: lead server vs each competitor ────────────────
-    let lead_name: Option<&&str> = if let Some(override_name) = lead_override {
-        server_names
-            .iter()
-            .find(|n| **n == override_name)
-            .or_else(|| {
-                eprintln!(
-                    "Warning: --base '{}' not found in servers, using first server",
-                    override_name
-                );
-                server_names.first()
-            })
-    } else {
-        server_names.first()
-    };
-    if let Some(lead) = lead_name {
-        l.push(format!("## Head-to-Head: {} vs Competition", lead));
-        l.push(String::new());
-        l.push(format!(
-            "How {} compares to each server on every benchmark. Positive = {} is faster, negative = {} is slower.",
-            lead, lead, lead
-        ));
-        l.push(String::new());
-
-        // Build a header with each competitor
-        let competitors: Vec<&&str> = server_names.iter().filter(|n| **n != *lead).collect();
-        if !competitors.is_empty() {
-            let mut header = "| Benchmark |".to_string();
-            let mut sep = "|-----------|".to_string();
-            for comp in &competitors {
-                header.push_str(&format!(" vs {} |", comp));
-                sep.push_str(&"-".repeat(comp.len() + 5));
-                sep.push('|');
-            }
-            l.push(header);
-            l.push(sep);
-
-            for bench in benchmarks {
-                let bench_name = bench.get("name").and_then(|n| n.as_str()).unwrap_or("?");
-                if let Some(servers) = bench.get("servers").and_then(|s| s.as_array()) {
-                    // Find lead server's mean
-                    let lead_mean = servers
-                        .iter()
-                        .find(|s| s.get("server").and_then(|v| v.as_str()).unwrap_or("") == *lead)
-                        .and_then(|s| {
-                            if s.get("status").and_then(|v| v.as_str()).unwrap_or("") == "ok" {
-                                s.get("mean_ms").and_then(|v| v.as_f64())
-                            } else {
-                                None
-                            }
-                        });
-
-                    let mut row = format!("| {} |", bench_name);
-                    for comp in &competitors {
-                        let comp_name: &str = comp;
-                        let comp_srv = servers.iter().find(|s| {
-                            s.get("server").and_then(|v| v.as_str()).unwrap_or("") == comp_name
-                        });
-                        let comp_status = comp_srv
-                            .and_then(|s| s.get("status").and_then(|v| v.as_str()))
-                            .unwrap_or("");
-                        let comp_mean = comp_srv
-                            .filter(|_| comp_status == "ok")
-                            .and_then(|s| s.get("mean_ms").and_then(|v| v.as_f64()));
-                        let comp_error = comp_srv
-                            .and_then(|s| s.get("error").and_then(|v| v.as_str()))
-                            .unwrap_or("");
-
-                        match (lead_mean, comp_mean) {
-                            (Some(lm), Some(cm)) => {
-                                if (lm - cm).abs() < 0.01 {
-                                    row.push_str(" tied |");
-                                } else if lm < cm {
-                                    // Lead is faster
-                                    let factor = cm / lm;
-                                    if factor > 10.0 {
-                                        row.push_str(&format!(" **{:.1}x faster** |", factor));
-                                    } else {
-                                        row.push_str(&format!(" {:.1}x faster |", factor));
-                                    }
-                                } else {
-                                    // Lead is slower
-                                    let factor = lm / cm;
-                                    if factor > 10.0 {
-                                        row.push_str(&format!(" {:.1}x slower |", factor));
-                                    } else {
-                                        row.push_str(&format!(" {:.1}x slower |", factor));
-                                    }
-                                }
-                            }
-                            (Some(_), None) => {
-                                // Competitor failed
-                                if comp_error.contains("timeout") {
-                                    row.push_str(" competitor timeout |");
-                                } else if comp_status == "invalid" {
-                                    row.push_str(" competitor empty |");
-                                } else {
-                                    row.push_str(" competitor crash |");
-                                }
-                            }
-                            (None, Some(_)) => {
-                                row.push_str(" - |");
-                            }
-                            (None, None) => {
-                                row.push_str(" both failed |");
-                            }
-                        }
-                    }
-                    l.push(row);
-                }
-            }
-            l.push(String::new());
-        }
     }
 
     // ── Footer ──────────────────────────────────────────────────────────
@@ -578,6 +508,26 @@ fn generate_analysis(data: &Value, json_path: &str, lead_override: Option<&str>)
     }
 
     l.join("\n")
+}
+
+/// Determine display label for a server result: ok, empty, no, timeout, crash
+fn server_status_label(srv: &Value) -> &'static str {
+    let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    let response = srv.get("response").and_then(|v| v.as_str()).unwrap_or("");
+    let error = srv.get("error").and_then(|v| v.as_str()).unwrap_or("");
+    match status {
+        "ok" if response != "null" && response != "[]" && !response.is_empty() => "ok",
+        "ok" | "invalid"
+            if response.contains("Unknown method") || response.contains("unsupported") =>
+        {
+            "no"
+        }
+        "ok" | "invalid" => "empty",
+        _ if error.contains("timeout") || error.contains("wait_for_diagnostics: timeout") => {
+            "timeout"
+        }
+        _ => "crash",
+    }
 }
 
 // ---------------------------------------------------------------------------

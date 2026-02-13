@@ -135,15 +135,15 @@ benchmarks:
 
 # Or pick specific ones
 benchmarks:
-  - spawn
-  - diagnostics
-  - definition
-  - hover
+  - initialize
+  - textDocument/diagnostic
+  - textDocument/definition
+  - textDocument/hover
 ```
 
 If omitted, all benchmarks are run.
 
-Valid benchmark names: `all`, `spawn`, `diagnostics`, `definition`, `declaration`, `hover`, `references`, `documentSymbol`, `documentLink`.
+Valid benchmark names: `all`, `initialize`, `textDocument/diagnostic`, `textDocument/definition`, `textDocument/declaration`, `textDocument/hover`, `textDocument/references`, `textDocument/documentSymbol`, `textDocument/documentLink`.
 
 ### Server fields
 
@@ -186,11 +186,11 @@ col  16 (editor):          ^
 
 In the config: `line: 102`, `col: 15`.
 
-The position should land on an identifier that LSP methods can act on -- a type name, function call, variable, etc. This is used by `definition`, `declaration`, `hover`, and `references` benchmarks. The `spawn`, `diagnostics`, `documentSymbol`, and `documentLink` benchmarks ignore the position.
+The position should land on an identifier that LSP methods can act on -- a type name, function call, variable, etc. This is used by `textDocument/definition`, `textDocument/declaration`, `textDocument/hover`, and `textDocument/references` benchmarks. The `initialize`, `textDocument/diagnostic`, `textDocument/documentSymbol`, and `textDocument/documentLink` benchmarks ignore the position.
 
 ### Example configs
 
-**Minimal** -- single server, just spawn and diagnostics:
+**Minimal** -- single server, just initialize and diagnostics:
 
 ```yaml
 project: examples
@@ -198,8 +198,8 @@ file: Counter.sol
 line: 21
 col: 8
 benchmarks:
-  - spawn
-  - diagnostics
+  - initialize
+  - textDocument/diagnostic
 servers:
   - label: solc
     cmd: solc
@@ -218,8 +218,8 @@ warmup: 0
 timeout: 5
 index_timeout: 10
 benchmarks:
-  - spawn
-  - hover
+  - initialize
+  - textDocument/hover
 servers:
   - label: mmsaki
     cmd: solidity-language-server
@@ -239,7 +239,6 @@ benchmarks:
   - all
 readme:
   - benchmarks/v4-core/README.md
-  - README.md
 servers:
   - label: mmsaki
     cmd: solidity-language-server
@@ -319,17 +318,21 @@ Warmup iterations (`warmup`, default 2) run the exact same benchmark but **disca
 - **Internal caches**: Some servers cache symbol tables or analysis results after the first request.
 - **OS-level caches**: First file reads hit disk; subsequent reads hit the page cache.
 
-For `spawn` and `diagnostics` benchmarks, a fresh server is started for every iteration, so warmup has less effect. For method benchmarks (definition, hover, etc.), the server stays alive across iterations, so warmup helps measure steady-state performance.
+For `initialize` and `textDocument/diagnostic` benchmarks, a fresh server is started for every iteration, so warmup has less effect. For method benchmarks (`textDocument/definition`, `textDocument/hover`, etc.), the server stays alive across iterations, so warmup helps measure steady-state performance.
 
 Set `warmup: 0` in your config (or `-w 0` on the CLI) to measure real-world "first call" performance.
 
 ### Benchmark types
 
-**Spawn + Init**: Starts a fresh server process and performs the LSP initialize/initialized handshake. Measures cold-start time. A fresh server is spawned for every iteration.
+Benchmarks are named after their official LSP method names:
 
-**Diagnostics**: Starts a fresh server, opens the target file, and waits for the server to publish diagnostics. Measures how long the server takes to analyze the file. Uses `index_timeout`. A fresh server is spawned for every iteration.
+**initialize**: Starts a fresh server process and performs the LSP `initialize`/`initialized` handshake. Measures cold-start time. A fresh server is spawned for every iteration.
 
-**Method benchmarks** (definition, declaration, hover, references, documentSymbol, documentLink): Starts a single server, opens the target file, waits for diagnostics (using `index_timeout`), then sends repeated LSP method requests at the target position (`line`/`col`). Only the method request time is measured -- the indexing phase is not included in the timings.
+**textDocument/diagnostic**: Starts a fresh server, opens the target file, and waits for the server to publish diagnostics. Measures how long the server takes to analyze the file. Uses `index_timeout`. A fresh server is spawned for every iteration.
+
+**textDocument/definition**, **textDocument/declaration**, **textDocument/hover**, **textDocument/references**: Starts a single server, opens the target file, waits for diagnostics (using `index_timeout`), then sends repeated LSP method requests at the target position (`line`/`col`). Only the method request time is measured -- the indexing phase is not included in the timings.
+
+**textDocument/documentSymbol**, **textDocument/documentLink**: Same as above but these are document-level methods that don't use the target position.
 
 ### Result statuses
 
@@ -357,11 +360,11 @@ Memory is measured in all outcomes:
 
 | Scenario | When RSS is sampled |
 |----------|---------------------|
-| Diagnostics (success) | After diagnostics complete, before the server is killed. Peak RSS across all iterations is recorded. |
-| Diagnostics (timeout/crash) | Right before returning the failure. The server is still alive, so RSS reflects memory consumed while stuck. |
+| `textDocument/diagnostic` (success) | After diagnostics complete, before the server is killed. Peak RSS across all iterations is recorded. |
+| `textDocument/diagnostic` (timeout/crash) | Right before returning the failure. The server is still alive, so RSS reflects memory consumed while stuck. |
 | Method benchmarks (success) | Once after indexing completes, before the request loop begins. |
 | Method benchmarks (timeout/crash) | Right before returning the failure. |
-| Spawn | Not measured (process is too short-lived). |
+| `initialize` | Not measured (process is too short-lived). |
 
 This means even servers that timeout or crash will have their memory usage recorded. For example, a Node.js server that times out after 15 seconds of indexing will show how much memory it consumed before giving up.
 
@@ -394,14 +397,18 @@ Generate a detailed analysis report from benchmark JSON:
 ./target/release/gen-analysis --help                                           # show help
 ```
 
-The analysis report includes:
+The analysis report is organized per-feature. Each LSP method gets its own section with all stats aggregated into a single table:
 
-- **Consistency (p50 vs p95 Spread)** -- How much latency varies between typical and worst-case iterations. Highlights servers with high spike multipliers.
-- **Per-Iteration Range** -- Min/max latency across all measured iterations.
-- **Capability Matrix** -- Which servers succeed, fail, timeout, or crash on each benchmark, with a success rate summary.
-- **Overhead Comparison** -- Each server's mean latency vs the fastest server per benchmark, with multiplier.
-- **Memory Usage (RSS)** -- Resident set size after indexing. Only shown when RSS data is present in the JSON.
-- **Head-to-Head** -- How the base server compares to each competitor. Use `--base <server>` to set the perspective (defaults to the first server).
+- **Capability Matrix** -- Global overview: which servers succeed, fail, timeout, or crash on each benchmark, with a success rate summary.
+- **Per-feature sections** (one per benchmark, e.g. `initialize`, `textDocument/definition`, etc.) -- Each section contains a table with servers as rows and dynamic columns:
+  - **Status** -- ok, empty, no, timeout, crash
+  - **Mean** -- average latency
+  - **p50 / p95 / Spread / Spike** -- consistency metrics (shown when percentile data exists)
+  - **Min / Max / Range** -- per-iteration range (shown when iteration data exists)
+  - **Overhead** -- multiplier vs the fastest server (shown when >1 server succeeded)
+  - **RSS** -- memory usage in MB (shown when RSS data exists)
+  - **vs Base** -- head-to-head comparison against the base server (shown when >1 server)
+- **Peak Memory (RSS)** -- Global summary of peak RSS per server across all benchmarks. Only shown when RSS data is present.
 
 ### CLI options
 
@@ -442,7 +449,7 @@ Each result stores per-iteration data in an `iterations` array. For successful b
 }
 ```
 
-For `spawn` benchmarks, the response is `"ok"` for each iteration and `rss_kb` is omitted (process is too short-lived). For `diagnostics` benchmarks, `rss_kb` is the peak RSS across all iterations (each iteration spawns a fresh server). For method benchmarks (definition, hover, etc.), `rss_kb` is measured once after indexing completes. The top-level `response` field duplicates the first iteration's response for backward compatibility.
+For `initialize` benchmarks, the response is `"ok"` for each iteration and `rss_kb` is omitted (process is too short-lived). For `textDocument/diagnostic` benchmarks, `rss_kb` is the peak RSS across all iterations (each iteration spawns a fresh server). For method benchmarks (`textDocument/definition`, `textDocument/hover`, etc.), `rss_kb` is measured once after indexing completes. The top-level `response` field duplicates the first iteration's response for backward compatibility.
 
 Failed or unsupported benchmarks (`status: "fail"` or `"invalid"`) have no `iterations` array:
 

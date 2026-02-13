@@ -571,9 +571,9 @@ impl BenchRow {
                 let mut obj = json!({
                     "server": self.label,
                     "status": "ok",
-                    "p50_ms": (self.p50 * 10.0).round() / 10.0,
-                    "p95_ms": (self.p95 * 10.0).round() / 10.0,
-                    "mean_ms": (self.mean * 10.0).round() / 10.0,
+                    "p50_ms": (self.p50 * 100.0).round() / 100.0,
+                    "p95_ms": (self.p95 * 100.0).round() / 100.0,
+                    "mean_ms": (self.mean * 100.0).round() / 100.0,
                     "iterations": iter_json,
                     "response": self.summary,
                 });
@@ -973,14 +973,14 @@ fn save_json(
 // ── Main ────────────────────────────────────────────────────────────────────
 
 const ALL_BENCHMARKS: &[&str] = &[
-    "spawn",
-    "diagnostics",
-    "definition",
-    "declaration",
-    "hover",
-    "references",
-    "documentSymbol",
-    "documentLink",
+    "initialize",
+    "textDocument/diagnostic",
+    "textDocument/definition",
+    "textDocument/declaration",
+    "textDocument/hover",
+    "textDocument/references",
+    "textDocument/documentSymbol",
+    "textDocument/documentLink",
 ];
 
 fn print_usage() {
@@ -1024,6 +1024,10 @@ index_timeout: 15 # seconds for server to index/warm up
 output: benchmarks # directory for JSON results
 
 # Which benchmarks to run (omit or use "all" to run everything)
+# Uses official LSP method names:
+#   initialize, textDocument/diagnostic, textDocument/definition,
+#   textDocument/declaration, textDocument/hover, textDocument/references,
+#   textDocument/documentSymbol, textDocument/documentLink
 benchmarks:
   - all
 
@@ -1295,36 +1299,32 @@ fn main() {
         })
     };
 
-    // (command, display_name, lsp_method, params_fn)
-    let method_benchmarks: Vec<(&str, &str, &str, &dyn Fn(&str) -> Value)> = vec![
+    // (config_key, lsp_method, params_fn)
+    // config_key and lsp_method are now the same — the official LSP method name
+    let method_benchmarks: Vec<(&str, &str, &dyn Fn(&str) -> Value)> = vec![
         (
-            "definition",
-            "Go to Definition",
+            "textDocument/definition",
             "textDocument/definition",
             &position_params,
         ),
         (
-            "declaration",
-            "Go to Declaration",
+            "textDocument/declaration",
             "textDocument/declaration",
             &position_params,
         ),
-        ("hover", "Hover", "textDocument/hover", &position_params),
+        ("textDocument/hover", "textDocument/hover", &position_params),
         (
-            "references",
-            "Find References",
+            "textDocument/references",
             "textDocument/references",
             &ref_params,
         ),
         (
-            "documentSymbol",
-            "Document Symbols",
+            "textDocument/documentSymbol",
             "textDocument/documentSymbol",
             &doc_params,
         ),
         (
-            "documentLink",
-            "Document Links",
+            "textDocument/documentLink",
             "textDocument/documentLink",
             &doc_params,
         ),
@@ -1332,16 +1332,16 @@ fn main() {
 
     // ── spawn ────────────────────────────────────────────────────────────
 
-    if benchmarks.contains(&"spawn") {
+    if benchmarks.contains(&"initialize") {
         num += 1;
         eprintln!(
             "\n{}",
-            style(format!("[{}/{}] Spawn + Init", num, total)).bold()
+            style(format!("[{}/{}] initialize", num, total)).bold()
         );
         let rows = run_bench(&avail, |srv, on_progress| {
             bench_spawn(srv, &root, &cwd, w, n, on_progress)
         });
-        all_results.push(("Spawn + Init", rows));
+        all_results.push(("initialize", rows));
         let p = save_json(
             &all_results,
             &versions,
@@ -1361,11 +1361,11 @@ fn main() {
 
     // ── diagnostics ──────────────────────────────────────────────────────
 
-    if benchmarks.contains(&"diagnostics") {
+    if benchmarks.contains(&"textDocument/diagnostic") {
         num += 1;
         eprintln!(
             "\n{}",
-            style(format!("[{}/{}] Diagnostics", num, total)).bold()
+            style(format!("[{}/{}] textDocument/diagnostic", num, total)).bold()
         );
         let rows = run_bench(&avail, |srv, on_progress| {
             bench_diagnostics(
@@ -1379,7 +1379,7 @@ fn main() {
                 on_progress,
             )
         });
-        all_results.push(("Diagnostics", rows));
+        all_results.push(("textDocument/diagnostic", rows));
         let p = save_json(
             &all_results,
             &versions,
@@ -1397,14 +1397,14 @@ fn main() {
         eprintln!("  {} {}", style("saved").dim(), style(&p).dim());
     }
 
-    // ── all LSP method benchmarks (definition, declaration, hover, etc.) ─
+    // ── all LSP method benchmarks ───────────────────────────────────────
 
-    for (cmd, display_name, method, params_fn) in &method_benchmarks {
-        if benchmarks.contains(cmd) {
+    for (method, lsp_method, params_fn) in &method_benchmarks {
+        if benchmarks.contains(method) {
             num += 1;
             eprintln!(
                 "\n{}",
-                style(format!("[{}/{}] {}", num, total, display_name)).bold()
+                style(format!("[{}/{}] {}", num, total, method)).bold()
             );
             let rows = run_bench(&avail, |srv, on_progress| {
                 bench_lsp_method(
@@ -1412,7 +1412,7 @@ fn main() {
                     &root,
                     &cwd,
                     &bench_sol,
-                    method,
+                    lsp_method,
                     *params_fn,
                     index_timeout,
                     timeout,
@@ -1421,7 +1421,7 @@ fn main() {
                     on_progress,
                 )
             });
-            all_results.push((display_name, rows));
+            all_results.push((method, rows));
             let p = save_json(
                 &all_results,
                 &versions,

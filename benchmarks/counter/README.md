@@ -28,11 +28,11 @@ Benchmarks comparing Solidity LSP servers against `examples` (`Counter.sol`).
 
 | Benchmark | mmsaki | solc 🏆 | nomicfoundation | juanfranblanco | qiuxiang |
 |-----------|--------|-----------|-----------------|----------------|----------|
-| [Spawn + Init](#spawn--init) | 4.10ms 🥇 | 110.50ms 🥉 | 853.40ms | 507.00ms | 66.00ms 🥈 |
-| [Diagnostics](#diagnostics) | 119.50ms 🥈 | 0.80ms 🥇 | 375.70ms | 801.30ms | 153.60ms 🥉 |
-| [Go to Definition](#go-to-definition) | 117.60ms | 0.10ms 🥇 | 0.30ms 🥈 | 0.40ms | 0.30ms 🥉 |
-| [Hover](#hover) | 116.00ms | 0.10ms 🥇 | 0.30ms 🥈 | 0.30ms 🥉 | - |
-| [Find References](#find-references) | 0.30ms 🥈 | unsupported | 0.30ms 🥉 | 0.60ms | 0.20ms 🥇 |
+| [initialize](#initialize) | 4.60ms 🥇 | 113.80ms 🥉 | 867.70ms | 529.00ms | 69.80ms 🥈 |
+| [textDocument/diagnostic](#textdocumentdiagnostic) | 136.00ms 🥈 | 0.90ms 🥇 | 373.00ms | 806.30ms | 153.80ms 🥉 |
+| [textDocument/definition](#textdocumentdefinition) | 118.60ms | 0.10ms 🥇 | 0.40ms 🥉 | 0.40ms | 0.30ms 🥈 |
+| [textDocument/hover](#textdocumenthover) | 128.00ms | 0.00ms 🥇 | 0.30ms 🥈 | 0.30ms 🥉 | - |
+| [textDocument/references](#textdocumentreferences) | 0.40ms 🥉 | unsupported | 0.30ms 🥈 | 0.90ms | 0.20ms 🥇 |
 
 > **🏆 Overall Winner: solc** — 3 🥇 out of 5 benchmarks
 
@@ -41,8 +41,8 @@ Benchmarks comparing Solidity LSP servers against `examples` (`Counter.sol`).
 | Server | 🥇 Gold | 🥈 Silver | 🥉 Bronze | Score |
 |--------|------|----------|----------|-------|
 | **solc** 🏆 | 3 | 0 | 1 | 10 |
-| **mmsaki** | 1 | 2 | 0 | 7 |
-| **qiuxiang** | 1 | 1 | 2 | 7 |
+| **qiuxiang** | 1 | 2 | 1 | 8 |
+| **mmsaki** | 1 | 1 | 1 | 6 |
 | **nomicfoundation** | 0 | 2 | 1 | 5 |
 | **juanfranblanco** | 0 | 0 | 1 | 1 |
 
@@ -50,27 +50,39 @@ Benchmarks comparing Solidity LSP servers against `examples` (`Counter.sol`).
 
 | Feature | mmsaki | solc | nomicfoundation | juanfranblanco | qiuxiang |
 |---------|--------|------|-----------------|----------------|----------|
-| Spawn + Init | yes | yes | yes | yes | yes |
-| Diagnostics | yes | yes | yes | yes | yes |
-| Go to Definition | yes | yes | yes | yes | yes |
-| Hover | yes | yes | yes | yes | empty |
-| Find References | yes | no | yes | yes | yes |
+| initialize | yes | yes | yes | yes | yes |
+| textDocument/diagnostic | yes | yes | yes | yes | yes |
+| textDocument/definition | yes | yes | yes | yes | yes |
+| textDocument/hover | yes | yes | yes | yes | empty |
+| textDocument/references | yes | no | yes | yes | yes |
 
 > yes = supported   no = unsupported   timeout = server timed out   crash = server crashed   empty = returned null/empty
+
+## Memory Usage
+
+Peak resident set size (RSS) measured after indexing.
+
+| Server | Peak RSS | Measured During |
+|--------|----------|-----------------|
+| **mmsaki** | 4.9 MB | textDocument/diagnostic |
+| **solc** | 26.2 MB | textDocument/references |
+| **nomicfoundation** | 363.6 MB | textDocument/diagnostic |
+| **juanfranblanco** | 381.1 MB | textDocument/diagnostic |
+| **qiuxiang** | 60.4 MB | textDocument/diagnostic |
 
 ---
 
 ## Detailed Results
 
-### Spawn + Init
+### initialize
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **mmsaki** | 🥇 | 4.10ms | 4.10ms | 4.60ms |
-| **solc** | 🥉 | 110.50ms | 112.40ms | 113.10ms |
-| **nomicfoundation** | ok | 853.40ms | 857.70ms | 874.80ms |
-| **juanfranblanco** | ok | 507.00ms | 506.40ms | 513.70ms |
-| **qiuxiang** | 🥈 | 66.00ms | 66.50ms | 67.60ms |
+| **mmsaki** | 🥇 | 4.60ms | 4.20ms | 8.60ms |
+| **solc** | 🥉 | 113.80ms | 113.90ms | 117.50ms |
+| **nomicfoundation** | ok | 867.70ms | 870.80ms | 880.00ms |
+| **juanfranblanco** | ok | 529.00ms | 526.30ms | 578.10ms |
+| **qiuxiang** | 🥈 | 69.80ms | 70.10ms | 71.50ms |
 
 <details>
 <summary>Response details</summary>
@@ -107,15 +119,15 @@ ok
 
 </details>
 
-### Diagnostics
+### textDocument/diagnostic
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **mmsaki** | 🥈 | 119.50ms | 118.50ms | 127.00ms |
-| **solc** | 🥇 | 0.80ms | 0.80ms | 0.80ms |
-| **nomicfoundation** | ok | 375.70ms | 374.90ms | 382.40ms |
-| **juanfranblanco** | ok | 801.30ms | 800.00ms | 872.70ms |
-| **qiuxiang** | 🥉 | 153.60ms | 153.70ms | 156.30ms |
+| **mmsaki** | 🥈 | 136.00ms | 138.40ms | 159.30ms |
+| **solc** | 🥇 | 0.90ms | 0.90ms | 1.00ms |
+| **nomicfoundation** | ok | 373.00ms | 374.30ms | 377.30ms |
+| **juanfranblanco** | ok | 806.30ms | 802.00ms | 879.70ms |
+| **qiuxiang** | 🥉 | 153.80ms | 153.40ms | 156.20ms |
 
 <details>
 <summary>Response details</summary>
@@ -126,13 +138,7 @@ ok
 {
   "diagnostics": [
     {
-      "code": "2072",
-      "message": "[forge build] Unused local variable.",
-      "range": {
-        "end": {
-          "character": 19,
-          "line": 20
-        },...
+      "code": "2072",...
 ```
 
 **solc**
@@ -141,13 +147,7 @@ ok
 {
   "diagnostics": [
     {
-      "code": 2072,
-      "message": "Warning: Unused local variable.",
-      "range": {
-        "end": {
-          "character": 19,
-          "line": 20
-        },...
+      "code": 2072,...
 ```
 
 **nomicfoundation**
@@ -156,13 +156,7 @@ ok
 {
   "diagnostics": [
     {
-      "code": "2072",
-      "message": "Unused local variable.",
-      "range": {
-        "end": {
-          "character": 19,
-          "line": 20
-        },...
+      "code": "2072",...
 ```
 
 **juanfranblanco**
@@ -171,13 +165,7 @@ ok
 {
   "diagnostics": [
     {
-      "code": "2072",
-      "message": "Unused local variable.",
-      "range": {
-        "end": {
-          "character": 19,
-          "line": 20
-        },...
+      "code": "2072",...
 ```
 
 **qiuxiang**
@@ -191,15 +179,15 @@ ok
 
 </details>
 
-### Go to Definition
+### textDocument/definition
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **mmsaki** | ok | 117.60ms | 117.30ms | 122.10ms |
-| **solc** | 🥇 | 0.10ms | 0.10ms | 0.20ms |
-| **nomicfoundation** | 🥈 | 0.30ms | 0.40ms | 0.40ms |
-| **juanfranblanco** | ok | 0.40ms | 0.40ms | 0.40ms |
-| **qiuxiang** | 🥉 | 0.30ms | 0.20ms | 0.40ms |
+| **mmsaki** | ok | 118.60ms | 117.90ms | 122.20ms |
+| **solc** | 🥇 | 0.10ms | 0.10ms | 0.10ms |
+| **nomicfoundation** | 🥉 | 0.40ms | 0.40ms | 0.70ms |
+| **juanfranblanco** | ok | 0.40ms | 0.40ms | 0.50ms |
+| **qiuxiang** | 🥈 | 0.30ms | 0.30ms | 0.40ms |
 
 <details>
 <summary>Response details</summary>
@@ -212,12 +200,7 @@ ok
     "end": {
       "character": 25,
       "line": 9
-    },
-    "start": {
-      "character": 19,
-      "line": 9
-    }
-  },...
+    },...
 ```
 
 **solc**
@@ -227,14 +210,7 @@ ok
   {
     "range": {
       "end": {
-        "character": 25,
-        "line": 9
-      },
-      "start": {
-        "character": 19,
-        "line": 9
-      }
-    },...
+        "character": 25,...
 ```
 
 **nomicfoundation**
@@ -245,12 +221,7 @@ ok
     "end": {
       "character": 25,
       "line": 9
-    },
-    "start": {
-      "character": 19,
-      "line": 9
-    }
-  },...
+    },...
 ```
 
 **juanfranblanco**
@@ -260,14 +231,7 @@ ok
   {
     "range": {
       "end": {
-        "character": 26,
-        "line": 9
-      },
-      "start": {
-        "character": 4,
-        "line": 9
-      }
-    },...
+        "character": 26,...
 ```
 
 **qiuxiang**
@@ -278,24 +242,19 @@ ok
     "end": {
       "character": 26,
       "line": 19
-    },
-    "start": {
-      "character": 17,
-      "line": 19
-    }
-  },...
+    },...
 ```
 
 </details>
 
-### Hover
+### textDocument/hover
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **mmsaki** | ok | 116.00ms | 116.90ms | 121.20ms |
-| **solc** | 🥇 | 0.10ms | 0.00ms | 0.10ms |
-| **nomicfoundation** | 🥈 | 0.30ms | 0.30ms | 0.50ms |
-| **juanfranblanco** | 🥉 | 0.30ms | 0.30ms | 0.50ms |
+| **mmsaki** | ok | 128.00ms | 124.00ms | 178.50ms |
+| **solc** | 🥇 | 0.00ms | 0.00ms | 0.10ms |
+| **nomicfoundation** | 🥈 | 0.30ms | 0.30ms | 0.40ms |
+| **juanfranblanco** | 🥉 | 0.30ms | 0.30ms | 0.40ms |
 | **qiuxiang** | invalid | - | - | - |
 
 <details>
@@ -306,10 +265,7 @@ ok
 ```json
 {
   "contents": {
-    "kind": "markdown",
-    "value": "```solidity\nuint256 public number\n```\n\nSelector: `0x8381f58a`\n\n---\nThe current count."
-  }
-}
+    "kind": "markdown",...
 ```
 
 **solc**
@@ -317,15 +273,7 @@ ok
 ```json
 {
   "contents": {
-    "kind": "markdown",
-    "value": "```solidity\nuint256\n```\n\n"
-  },
-  "range": {
-    "end": {
-      "character": 14,
-      "line": 21
-    },
-    "start": {...
+    "kind": "markdown",...
 ```
 
 **nomicfoundation**
@@ -333,10 +281,7 @@ ok
 ```json
 {
   "contents": {
-    "kind": "markdown",
-    "value": "```solidity\nuint256 public number\n```"
-  }
-}
+    "kind": "markdown",...
 ```
 
 **juanfranblanco**
@@ -344,10 +289,7 @@ ok
 ```json
 {
   "contents": {
-    "kind": "markdown",
-    "value": "### State Variable: number\n#### Contract: Counter\n\t/// @notice The current count.\n\n### Type Info: \n### uint256\n"
-  }
-}
+    "kind": "markdown",...
 ```
 
 **qiuxiang**
@@ -358,15 +300,15 @@ null
 
 </details>
 
-### Find References
+### textDocument/references
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **mmsaki** | 🥈 | 0.30ms | 0.30ms | 0.40ms |
+| **mmsaki** | 🥉 | 0.40ms | 0.40ms | 0.50ms |
 | **solc** | invalid | - | - | - |
-| **nomicfoundation** | 🥉 | 0.30ms | 0.30ms | 0.40ms |
-| **juanfranblanco** | ok | 0.60ms | 0.60ms | 0.80ms |
-| **qiuxiang** | 🥇 | 0.20ms | 0.30ms | 0.30ms |
+| **nomicfoundation** | 🥈 | 0.30ms | 0.30ms | 0.40ms |
+| **juanfranblanco** | ok | 0.90ms | 0.70ms | 2.80ms |
+| **qiuxiang** | 🥇 | 0.20ms | 0.20ms | 0.40ms |
 
 <details>
 <summary>Response details</summary>
@@ -378,14 +320,7 @@ null
   {
     "range": {
       "end": {
-        "character": 14,
-        "line": 26
-      },
-      "start": {
-        "character": 8,
-        "line": 26
-      }
-    },...
+        "character": 25,...
 ```
 
 **solc**
@@ -401,14 +336,7 @@ error: Unknown method textDocument/references
   {
     "range": {
       "end": {
-        "character": 25,
-        "line": 9
-      },
-      "start": {
-        "character": 19,
-        "line": 9
-      }
-    },...
+        "character": 25,...
 ```
 
 **juanfranblanco**
@@ -418,14 +346,7 @@ error: Unknown method textDocument/references
   {
     "range": {
       "end": {
-        "character": 26,
-        "line": 9
-      },
-      "start": {
-        "character": 4,
-        "line": 9
-      }
-    },...
+        "character": 26,...
 ```
 
 **qiuxiang**
@@ -435,20 +356,13 @@ error: Unknown method textDocument/references
   {
     "range": {
       "end": {
-        "character": 26,
-        "line": 19
-      },
-      "start": {
-        "character": 17,
-        "line": 19
-      }
-    },...
+        "character": 26,...
 ```
 
 </details>
 
 ---
 
-*Generated from [`benchmarks/counter/2026-02-13T08-16-42Z.json`](benchmarks/counter/2026-02-13T08-16-42Z.json) — benchmark run: 2026-02-13T08:16:42Z*
+*Generated from [`benchmarks/counter/2026-02-13T10-03-59Z.json`](benchmarks/counter/2026-02-13T10-03-59Z.json) — benchmark run: 2026-02-13T10:03:59Z*
 
 See [DOCS.md](./DOCS.md) for usage and installation.

@@ -6,7 +6,7 @@ project: v4-core
 # Target file to benchmark (relative to project root)
 file: src/libraries/Pool.sol
 
-# Target position for position-based benchmarks (definition, hover, etc.)
+# Target position for position-based benchmarks
 line: 102
 col: 15
 
@@ -17,18 +17,17 @@ timeout: 10        # seconds per request
 index_timeout: 15  # seconds for server to index/warm up
 output: benchmarks/v4-core # directory for JSON results
 readme: 
-  - benchmarks/v4-core/README.md # generates readme
-  - README.md
+  - benchmarks/v4-core/README.md
 
 benchmarks:
-  - spawn
-  - diagnostics
-  - definition
-  - declaration
-  - hover
-  - references
-  - documentSymbol
-  - documentLink
+  - initialize
+  - textDocument/diagnostic
+  - textDocument/definition
+  - textDocument/declaration
+  - textDocument/hover
+  - textDocument/references
+  - textDocument/documentSymbol
+  - textDocument/documentLink
 
 # LSP servers to benchmark
 servers:

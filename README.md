@@ -1,458 +1,114 @@
-# Solidity LSP Benchmarks
+# Benchmark Analysis
 
-Benchmarks comparing Solidity LSP servers against `v4-core` (`src/libraries/Pool.sol`).
+Analysis of `v4-core` (`src/libraries/Pool.sol`) — 10 iterations per benchmark.
 
-## Settings
+## Capability Matrix
 
-| Setting | Value |
-|---------|-------|
-| Project | `v4-core` |
-| File | `src/libraries/Pool.sol` |
-| Target position | line 102, col 15 |
-| Iterations | 10 |
-| Warmup | 2 |
-| Request timeout | 10s |
-| Index timeout | 15s |
+| Benchmark | mmsaki | solc | nomicfoundation | juanfranblanco | qiuxiang |
+|-----------|--------|------|-----------------|----------------|----------|
+| Spawn + Init | ok | ok | ok | ok | ok |
+| Diagnostics | ok | ok | timeout | crash | timeout |
+| Go to Definition | ok | empty | timeout | crash | timeout |
+| Go to Declaration | ok | no | timeout | crash | timeout |
+| Hover | ok | empty | timeout | crash | timeout |
+| Find References | ok | no | timeout | crash | timeout |
+| Document Symbols | ok | no | timeout | crash | timeout |
+| Document Links | ok | no | timeout | crash | timeout |
 
-## Servers
+| Server | Working | Failed | Success Rate |
+|--------|---------|--------|--------------|
+| mmsaki | 8/8 | 0/8 | 100% |
+| solc | 2/8 | 6/8 | 25% |
+| nomicfoundation | 1/8 | 7/8 | 12% |
+| juanfranblanco | 1/8 | 7/8 | 12% |
+| qiuxiang | 1/8 | 7/8 | 12% |
 
-| Server | Description | Version |
-|--------|-------------|---------|
-| [mmsaki](https://github.com/mmsaki/solidity-language-server) | Solidity Language Server by mmsaki | `solidity-language-server 0.1.14+commit.3d6a3d1.macos.aarch64` |
-| [solc](https://docs.soliditylang.org) | Official Solidity compiler LSP | `0.8.33+commit.64118f21.Darwin.appleclang` |
-| [nomicfoundation](https://github.com/NomicFoundation/hardhat-vscode) | Hardhat/Nomic Foundation Solidity Language Server | `@nomicfoundation/solidity-language-server 0.8.25` |
-| [juanfranblanco](https://github.com/juanfranblanco/vscode-solidity) | VSCode Solidity by Juan Blanco | `vscode-solidity-server 0.0.187` |
-| [qiuxiang](https://github.com/qiuxiang/solidity-ls) | Solidity Language Server by qiuxiang | `solidity-ls 0.5.4` |
+## Spawn + Init
 
-## Results
+| Server | Status | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | Overhead | vs mmsaki |
+|--------|--------|------|-----|-----|--------|-------|-----|-----|-------|----------|-----------|
+| mmsaki | ok | 4.00ms | 4.0ms | 4.4ms | 0.4ms | 1.10x | 3.66ms | 4.42ms | 0.76ms | **1.0x (fastest)** | - |
+| solc | ok | 113.40ms | 113.3ms | 116.1ms | 2.8ms | 1.02x | 112.13ms | 116.08ms | 3.95ms | **28.4x** | **28.4x slower** |
+| nomicfoundation | ok | 862.90ms | 864.9ms | 881.1ms | **16.2ms** | 1.02x | 845.30ms | 881.14ms | **35.84ms** | **215.7x** | **215.7x slower** |
+| juanfranblanco | ok | 514.70ms | 513.7ms | 518.9ms | 5.2ms | 1.01x | 510.59ms | 518.88ms | 8.29ms | **128.7x** | **128.7x slower** |
+| qiuxiang | ok | 67.90ms | 67.6ms | 69.4ms | 1.8ms | 1.03x | 66.90ms | 69.44ms | 2.54ms | **17.0x** | **17.0x slower** |
 
-| Benchmark | mmsaki 🏆 | solc | nomicfoundation | juanfranblanco | qiuxiang |
-|-----------|-------------|------|-----------------|----------------|----------|
-| [Spawn + Init](#spawn--init) | 4.00ms 🥇 | 112.40ms 🥉 | 868.50ms | 513.60ms | 68.30ms 🥈 |
-| [Diagnostics](#diagnostics) | 440.70ms 🥈 | 132.30ms 🥇 | timeout | FAIL | timeout |
-| [Go to Definition](#go-to-definition) | 8.80ms 🥇 | - | timeout | FAIL | timeout |
-| [Go to Declaration](#go-to-declaration) | 8.90ms 🥇 | unsupported | timeout | FAIL | timeout |
-| [Hover](#hover) | 13.90ms 🥇 | - | timeout | FAIL | timeout |
-| [Find References](#find-references) | 10.80ms 🥇 | unsupported | timeout | FAIL | timeout |
-| [Document Symbols](#document-symbols) | 8.40ms 🥇 | unsupported | timeout | FAIL | timeout |
-| [Document Links](#document-links) | 63.20ms 🥇 | unsupported | timeout | FAIL | timeout |
+## Diagnostics
 
-> **🏆 Overall Winner: mmsaki** — 7 🥇 out of 8 benchmarks
+| Server | Status | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | Overhead | RSS | vs mmsaki |
+|--------|--------|------|-----|-----|--------|-------|-----|-----|-------|----------|-----|-----------|
+| mmsaki | ok | 443.20ms | 443.4ms | 452.2ms | 8.8ms | 1.02x | 438.57ms | 452.23ms | **13.66ms** | 3.3x | 39.7 MB | - |
+| solc | ok | 133.30ms | 133.9ms | 135.1ms | 1.2ms | 1.01x | 130.96ms | 135.10ms | 4.14ms | **1.0x (fastest)** | 26.2 MB | 3.3x faster |
+| nomicfoundation | timeout | - | - | - | - | - | - | - | - | - | 511.5 MB | timeout |
+| juanfranblanco | crash | - | - | - | - | - | - | - | - | - | 0.0 MB | crash |
+| qiuxiang | timeout | - | - | - | - | - | - | - | - | - | 70.1 MB | timeout |
 
-### Medal Tally
+## Go to Definition
 
-| Server | 🥇 Gold | 🥈 Silver | 🥉 Bronze | Score |
-|--------|------|----------|----------|-------|
-| **mmsaki** 🏆 | 7 | 1 | 0 | 23 |
-| **solc** | 1 | 0 | 1 | 4 |
-| **qiuxiang** | 0 | 1 | 0 | 2 |
-| **nomicfoundation** | 0 | 0 | 0 | 0 |
-| **juanfranblanco** | 0 | 0 | 0 | 0 |
+| Server | Status | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | RSS | vs mmsaki |
+|--------|--------|------|-----|-----|--------|-------|-----|-----|-------|-----|-----------|
+| mmsaki | ok | 8.90ms | 8.9ms | 9.8ms | 0.9ms | 1.10x | 8.35ms | 9.83ms | 1.48ms | 37.7 MB | - |
+| solc | empty | - | - | - | - | - | - | - | - | 25.9 MB | empty |
+| nomicfoundation | timeout | - | - | - | - | - | - | - | - | 511.6 MB | timeout |
+| juanfranblanco | crash | - | - | - | - | - | - | - | - | 0.0 MB | crash |
+| qiuxiang | timeout | - | - | - | - | - | - | - | - | 69.7 MB | timeout |
 
-## Feature Support
+## Go to Declaration
 
-| Feature | mmsaki | solc | nomicfoundation | juanfranblanco | qiuxiang |
-|---------|--------|------|-----------------|----------------|----------|
-| Spawn + Init | yes | yes | yes | yes | yes |
-| Diagnostics | yes | yes | timeout | crash | timeout |
-| Go to Definition | yes | empty | timeout | crash | timeout |
-| Go to Declaration | yes | no | timeout | crash | timeout |
-| Hover | yes | empty | timeout | crash | timeout |
-| Find References | yes | no | timeout | crash | timeout |
-| Document Symbols | yes | no | timeout | crash | timeout |
-| Document Links | yes | no | timeout | crash | timeout |
+| Server | Status | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | RSS | vs mmsaki |
+|--------|--------|------|-----|-----|--------|-------|-----|-----|-------|-----|-----------|
+| mmsaki | ok | 8.90ms | 8.8ms | 9.7ms | 0.9ms | 1.10x | 8.25ms | 9.72ms | 1.47ms | 39.5 MB | - |
+| solc | no | - | - | - | - | - | - | - | - | 25.8 MB | empty |
+| nomicfoundation | timeout | - | - | - | - | - | - | - | - | 513.0 MB | timeout |
+| juanfranblanco | crash | - | - | - | - | - | - | - | - | 0.0 MB | crash |
+| qiuxiang | timeout | - | - | - | - | - | - | - | - | 70.0 MB | timeout |
 
-> yes = supported   no = unsupported   timeout = server timed out   crash = server crashed   empty = returned null/empty
+## Hover
+
+| Server | Status | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | RSS | vs mmsaki |
+|--------|--------|------|-----|-----|--------|-------|-----|-----|-------|-----|-----------|
+| mmsaki | ok | 13.70ms | 13.8ms | 14.3ms | 0.5ms | 1.04x | 12.90ms | 14.35ms | 1.45ms | 29.5 MB | - |
+| solc | empty | - | - | - | - | - | - | - | - | 25.6 MB | empty |
+| nomicfoundation | timeout | - | - | - | - | - | - | - | - | 488.1 MB | timeout |
+| juanfranblanco | crash | - | - | - | - | - | - | - | - | 0.0 MB | crash |
+| qiuxiang | timeout | - | - | - | - | - | - | - | - | 70.0 MB | timeout |
+
+## Find References
+
+| Server | Status | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | RSS | vs mmsaki |
+|--------|--------|------|-----|-----|--------|-------|-----|-----|-------|-----|-----------|
+| mmsaki | ok | 10.50ms | 10.4ms | 11.5ms | 1.1ms | 1.11x | 9.96ms | 11.52ms | 1.56ms | 29.9 MB | - |
+| solc | no | - | - | - | - | - | - | - | - | 25.9 MB | empty |
+| nomicfoundation | timeout | - | - | - | - | - | - | - | - | 511.0 MB | timeout |
+| juanfranblanco | crash | - | - | - | - | - | - | - | - | 0.0 MB | crash |
+| qiuxiang | timeout | - | - | - | - | - | - | - | - | 70.1 MB | timeout |
+
+## Document Symbols
+
+| Server | Status | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | RSS | vs mmsaki |
+|--------|--------|------|-----|-----|--------|-------|-----|-----|-------|-----|-----------|
+| mmsaki | ok | 8.40ms | 8.3ms | 8.8ms | 0.5ms | 1.06x | 8.09ms | 8.79ms | 0.70ms | 37.7 MB | - |
+| solc | no | - | - | - | - | - | - | - | - | 25.8 MB | empty |
+| nomicfoundation | timeout | - | - | - | - | - | - | - | - | 513.1 MB | timeout |
+| juanfranblanco | crash | - | - | - | - | - | - | - | - | 0.0 MB | crash |
+| qiuxiang | timeout | - | - | - | - | - | - | - | - | 70.2 MB | timeout |
+
+## Document Links
+
+| Server | Status | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | RSS | vs mmsaki |
+|--------|--------|------|-----|-----|--------|-------|-----|-----|-------|-----|-----------|
+| mmsaki | ok | 62.70ms | 62.7ms | 64.5ms | 1.8ms | 1.03x | 61.12ms | 64.50ms | 3.38ms | 29.0 MB | - |
+| solc | no | - | - | - | - | - | - | - | - | 26.2 MB | empty |
+| nomicfoundation | timeout | - | - | - | - | - | - | - | - | 512.5 MB | timeout |
+| juanfranblanco | crash | - | - | - | - | - | - | - | - | 0.0 MB | crash |
+| qiuxiang | timeout | - | - | - | - | - | - | - | - | 69.3 MB | timeout |
+
+## Peak Memory (RSS)
+
+| mmsaki | solc | nomicfoundation | juanfranblanco | qiuxiang |
+|--------|------|-----------------|----------------|----------|
+| 39.7 MB | 26.2 MB | 513.1 MB | 0.0 MB | 70.2 MB |
 
 ---
 
-## Detailed Results
-
-### Spawn + Init
-
-| Server | Status | Mean | P50 | P95 |
-|--------|--------|------|-----|-----|
-| **mmsaki** | 🥇 | 4.00ms | 4.00ms | 4.30ms |
-| **solc** | 🥉 | 112.40ms | 112.00ms | 114.60ms |
-| **nomicfoundation** | ok | 868.50ms | 870.00ms | 899.00ms |
-| **juanfranblanco** | ok | 513.60ms | 514.20ms | 517.10ms |
-| **qiuxiang** | 🥈 | 68.30ms | 68.30ms | 70.20ms |
-
-<details>
-<summary>Response details</summary>
-
-**mmsaki**
-
-```json
-ok
-```
-
-**solc**
-
-```json
-ok
-```
-
-**nomicfoundation**
-
-```json
-ok
-```
-
-**juanfranblanco**
-
-```json
-ok
-```
-
-**qiuxiang**
-
-```json
-ok
-```
-
-</details>
-
-### Diagnostics
-
-| Server | Status | Mean | P50 | P95 |
-|--------|--------|------|-----|-----|
-| **mmsaki** | 🥈 | 440.70ms | 441.20ms | 444.40ms |
-| **solc** | 🥇 | 132.30ms | 132.70ms | 133.30ms |
-| **nomicfoundation** | timeout | - | - | - |
-| **juanfranblanco** | EOF | - | - | - |
-| **qiuxiang** | timeout | - | - | - |
-
-<details>
-<summary>Response details</summary>
-
-**mmsaki**
-
-```json
-{
-  "diagnostics": [
-    {
-      "code": "mixed-case-function",
-      "message": "[forge lint] function names should use mixedCase",
-      "range": {
-        "end": {
-          "character": 21,...
-```
-
-**solc**
-
-```json
-{
-  "diagnostics": [
-    {
-      "code": 6275,...
-```
-
-**nomicfoundation**
-
-Error: `timeout`
-
-**juanfranblanco**
-
-Error: `EOF`
-
-**qiuxiang**
-
-Error: `timeout`
-
-</details>
-
-### Go to Definition
-
-| Server | Status | Mean | P50 | P95 |
-|--------|--------|------|-----|-----|
-| **mmsaki** | 🥇 | 8.80ms | 8.80ms | 10.10ms |
-| **solc** | invalid | - | - | - |
-| **nomicfoundation** | wait_for_diagnostics: timeout | - | - | - |
-| **juanfranblanco** | wait_for_diagnostics: EOF | - | - | - |
-| **qiuxiang** | wait_for_diagnostics: timeout | - | - | - |
-
-<details>
-<summary>Response details</summary>
-
-**mmsaki**
-
-```json
-{
-  "range": {
-    "end": {
-      "character": 16,
-      "line": 9
-    },
-    "start": {
-      "character": 8,
-      "line": 9
-    }
-  },...
-```
-
-**solc**
-
-```json
-[]
-```
-
-**nomicfoundation**
-
-Error: `wait_for_diagnostics: timeout`
-
-**juanfranblanco**
-
-Error: `wait_for_diagnostics: EOF`
-
-**qiuxiang**
-
-Error: `wait_for_diagnostics: timeout`
-
-</details>
-
-### Go to Declaration
-
-| Server | Status | Mean | P50 | P95 |
-|--------|--------|------|-----|-----|
-| **mmsaki** | 🥇 | 8.90ms | 8.80ms | 9.80ms |
-| **solc** | invalid | - | - | - |
-| **nomicfoundation** | wait_for_diagnostics: timeout | - | - | - |
-| **juanfranblanco** | wait_for_diagnostics: EOF | - | - | - |
-| **qiuxiang** | wait_for_diagnostics: timeout | - | - | - |
-
-<details>
-<summary>Response details</summary>
-
-**mmsaki**
-
-```json
-{
-  "range": {
-    "end": {
-      "character": 16,
-      "line": 9
-    },
-    "start": {
-      "character": 8,
-      "line": 9
-    }
-  },...
-```
-
-**solc**
-
-```json
-error: Unknown method textDocument/declaration
-```
-
-**nomicfoundation**
-
-Error: `wait_for_diagnostics: timeout`
-
-**juanfranblanco**
-
-Error: `wait_for_diagnostics: EOF`
-
-**qiuxiang**
-
-Error: `wait_for_diagnostics: timeout`
-
-</details>
-
-### Hover
-
-| Server | Status | Mean | P50 | P95 |
-|--------|--------|------|-----|-----|
-| **mmsaki** | 🥇 | 13.90ms | 13.90ms | 14.50ms |
-| **solc** | invalid | - | - | - |
-| **nomicfoundation** | wait_for_diagnostics: timeout | - | - | - |
-| **juanfranblanco** | wait_for_diagnostics: EOF | - | - | - |
-| **qiuxiang** | wait_for_diagnostics: timeout | - | - | - |
-
-<details>
-<summary>Response details</summary>
-
-**mmsaki**
-
-```json
-{
-  "contents": {
-    "kind": "markdown",...
-```
-
-**solc**
-
-```json
-null
-```
-
-**nomicfoundation**
-
-Error: `wait_for_diagnostics: timeout`
-
-**juanfranblanco**
-
-Error: `wait_for_diagnostics: EOF`
-
-**qiuxiang**
-
-Error: `wait_for_diagnostics: timeout`
-
-</details>
-
-### Find References
-
-| Server | Status | Mean | P50 | P95 |
-|--------|--------|------|-----|-----|
-| **mmsaki** | 🥇 | 10.80ms | 10.60ms | 11.80ms |
-| **solc** | invalid | - | - | - |
-| **nomicfoundation** | wait_for_diagnostics: timeout | - | - | - |
-| **juanfranblanco** | wait_for_diagnostics: EOF | - | - | - |
-| **qiuxiang** | wait_for_diagnostics: timeout | - | - | - |
-
-<details>
-<summary>Response details</summary>
-
-**mmsaki**
-
-```json
-[
-  {
-    "range": {
-      "end": {
-        "character": 33,
-        "line": 572
-      },
-      "start": {
-        "character": 25,
-        "line": 572
-      }
-    },...
-```
-
-**solc**
-
-```json
-error: Unknown method textDocument/references
-```
-
-**nomicfoundation**
-
-Error: `wait_for_diagnostics: timeout`
-
-**juanfranblanco**
-
-Error: `wait_for_diagnostics: EOF`
-
-**qiuxiang**
-
-Error: `wait_for_diagnostics: timeout`
-
-</details>
-
-### Document Symbols
-
-| Server | Status | Mean | P50 | P95 |
-|--------|--------|------|-----|-----|
-| **mmsaki** | 🥇 | 8.40ms | 8.40ms | 8.60ms |
-| **solc** | invalid | - | - | - |
-| **nomicfoundation** | wait_for_diagnostics: timeout | - | - | - |
-| **juanfranblanco** | wait_for_diagnostics: EOF | - | - | - |
-| **qiuxiang** | wait_for_diagnostics: timeout | - | - | - |
-
-<details>
-<summary>Response details</summary>
-
-**mmsaki**
-
-```json
-[
-  {
-    "kind": 15,
-    "name": "solidity ^0.8.0",
-    "range": {
-      "end": {
-        "character": 23,
-        "line": 1
-      },
-      "start": {
-        "character": 0,
-        "line": 1...
-```
-
-**solc**
-
-```json
-error: Unknown method textDocument/documentSymbol
-```
-
-**nomicfoundation**
-
-Error: `wait_for_diagnostics: timeout`
-
-**juanfranblanco**
-
-Error: `wait_for_diagnostics: EOF`
-
-**qiuxiang**
-
-Error: `wait_for_diagnostics: timeout`
-
-</details>
-
-### Document Links
-
-| Server | Status | Mean | P50 | P95 |
-|--------|--------|------|-----|-----|
-| **mmsaki** | 🥇 | 63.20ms | 63.50ms | 64.10ms |
-| **solc** | invalid | - | - | - |
-| **nomicfoundation** | wait_for_diagnostics: timeout | - | - | - |
-| **juanfranblanco** | wait_for_diagnostics: EOF | - | - | - |
-| **qiuxiang** | wait_for_diagnostics: timeout | - | - | - |
-
-<details>
-<summary>Response details</summary>
-
-**mmsaki**
-
-```json
-[
-  {
-    "range": {
-      "end": {
-        "character": 16,
-        "line": 3
-      },
-      "start": {
-        "character": 8,
-        "line": 3
-      }
-    },...
-```
-
-**solc**
-
-```json
-error: Unknown method textDocument/documentLink
-```
-
-**nomicfoundation**
-
-Error: `wait_for_diagnostics: timeout`
-
-**juanfranblanco**
-
-Error: `wait_for_diagnostics: EOF`
-
-**qiuxiang**
-
-Error: `wait_for_diagnostics: timeout`
-
-</details>
-
----
-
-*Generated from [`benchmarks/v4-core/2026-02-13T08-23-46Z.json`](benchmarks/v4-core/2026-02-13T08-23-46Z.json) — benchmark run: 2026-02-13T08:23:46Z*
-
-See [DOCS.md](./DOCS.md) for usage and installation.
+*Generated from [`benchmarks/v4-core/2026-02-13T09-53-03Z.json`](benchmarks/v4-core/2026-02-13T09-53-03Z.json) — benchmark run: 2026-02-13T09:53:03Z*

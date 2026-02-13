@@ -1,0 +1,908 @@
+{
+  "benchmarks": [
+    {
+      "name": "Spawn + Init",
+      "servers": [
+        {
+          "iterations": [
+            {
+              "ms": 4.42,
+              "response": "ok"
+            },
+            {
+              "ms": 3.66,
+              "response": "ok"
+            },
+            {
+              "ms": 3.76,
+              "response": "ok"
+            },
+            {
+              "ms": 4.05,
+              "response": "ok"
+            },
+            {
+              "ms": 4.34,
+              "response": "ok"
+            },
+            {
+              "ms": 3.87,
+              "response": "ok"
+            },
+            {
+              "ms": 4.03,
+              "response": "ok"
+            },
+            {
+              "ms": 4.07,
+              "response": "ok"
+            },
+            {
+              "ms": 3.73,
+              "response": "ok"
+            },
+            {
+              "ms": 3.66,
+              "response": "ok"
+            }
+          ],
+          "mean_ms": 4.0,
+          "p50_ms": 4.0,
+          "p95_ms": 4.4,
+          "response": "ok",
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 112.37,
+              "response": "ok"
+            },
+            {
+              "ms": 112.13,
+              "response": "ok"
+            },
+            {
+              "ms": 113.29,
+              "response": "ok"
+            },
+            {
+              "ms": 114.27,
+              "response": "ok"
+            },
+            {
+              "ms": 116.08,
+              "response": "ok"
+            },
+            {
+              "ms": 113.53,
+              "response": "ok"
+            },
+            {
+              "ms": 113.24,
+              "response": "ok"
+            },
+            {
+              "ms": 113.4,
+              "response": "ok"
+            },
+            {
+              "ms": 113.21,
+              "response": "ok"
+            },
+            {
+              "ms": 112.79,
+              "response": "ok"
+            }
+          ],
+          "mean_ms": 113.4,
+          "p50_ms": 113.3,
+          "p95_ms": 116.1,
+          "response": "ok",
+          "server": "solc",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 854.97,
+              "response": "ok"
+            },
+            {
+              "ms": 845.3,
+              "response": "ok"
+            },
+            {
+              "ms": 866.18,
+              "response": "ok"
+            },
+            {
+              "ms": 872.29,
+              "response": "ok"
+            },
+            {
+              "ms": 881.14,
+              "response": "ok"
+            },
+            {
+              "ms": 867.63,
+              "response": "ok"
+            },
+            {
+              "ms": 864.28,
+              "response": "ok"
+            },
+            {
+              "ms": 862.93,
+              "response": "ok"
+            },
+            {
+              "ms": 864.94,
+              "response": "ok"
+            },
+            {
+              "ms": 849.65,
+              "response": "ok"
+            }
+          ],
+          "mean_ms": 862.9,
+          "p50_ms": 864.9,
+          "p95_ms": 881.1,
+          "response": "ok",
+          "server": "nomicfoundation",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 515.85,
+              "response": "ok"
+            },
+            {
+              "ms": 513.0,
+              "response": "ok"
+            },
+            {
+              "ms": 513.74,
+              "response": "ok"
+            },
+            {
+              "ms": 518.88,
+              "response": "ok"
+            },
+            {
+              "ms": 512.74,
+              "response": "ok"
+            },
+            {
+              "ms": 518.75,
+              "response": "ok"
+            },
+            {
+              "ms": 512.91,
+              "response": "ok"
+            },
+            {
+              "ms": 513.61,
+              "response": "ok"
+            },
+            {
+              "ms": 510.59,
+              "response": "ok"
+            },
+            {
+              "ms": 516.45,
+              "response": "ok"
+            }
+          ],
+          "mean_ms": 514.7,
+          "p50_ms": 513.7,
+          "p95_ms": 518.9,
+          "response": "ok",
+          "server": "juanfranblanco",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 66.9,
+              "response": "ok"
+            },
+            {
+              "ms": 69.44,
+              "response": "ok"
+            },
+            {
+              "ms": 67.57,
+              "response": "ok"
+            },
+            {
+              "ms": 68.88,
+              "response": "ok"
+            },
+            {
+              "ms": 67.27,
+              "response": "ok"
+            },
+            {
+              "ms": 67.47,
+              "response": "ok"
+            },
+            {
+              "ms": 67.09,
+              "response": "ok"
+            },
+            {
+              "ms": 67.61,
+              "response": "ok"
+            },
+            {
+              "ms": 68.29,
+              "response": "ok"
+            },
+            {
+              "ms": 68.6,
+              "response": "ok"
+            }
+          ],
+          "mean_ms": 67.9,
+          "p50_ms": 67.6,
+          "p95_ms": 69.4,
+          "response": "ok",
+          "server": "qiuxiang",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "name": "Diagnostics",
+      "servers": [
+        {
+          "iterations": [
+            {
+              "ms": 443.74,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"mixed-case-function\",..."
+            },
+            {
+              "ms": 439.44,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"mixed-case-function\",..."
+            },
+            {
+              "ms": 443.44,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"mixed-case-function\",..."
+            },
+            {
+              "ms": 449.27,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"mixed-case-function\",..."
+            },
+            {
+              "ms": 452.23,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"mixed-case-function\",..."
+            },
+            {
+              "ms": 439.63,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"mixed-case-function\",..."
+            },
+            {
+              "ms": 443.71,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"mixed-case-function\",..."
+            },
+            {
+              "ms": 441.31,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"mixed-case-function\",..."
+            },
+            {
+              "ms": 438.57,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"mixed-case-function\",..."
+            },
+            {
+              "ms": 440.62,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"mixed-case-function\",..."
+            }
+          ],
+          "mean_ms": 443.2,
+          "p50_ms": 443.4,
+          "p95_ms": 452.2,
+          "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"mixed-case-function\",...",
+          "rss_kb": 40608,
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 133.13,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 6275,..."
+            },
+            {
+              "ms": 131.72,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 6275,..."
+            },
+            {
+              "ms": 132.96,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 6275,..."
+            },
+            {
+              "ms": 134.1,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 6275,..."
+            },
+            {
+              "ms": 134.34,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 6275,..."
+            },
+            {
+              "ms": 132.53,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 6275,..."
+            },
+            {
+              "ms": 134.32,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 6275,..."
+            },
+            {
+              "ms": 133.92,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 6275,..."
+            },
+            {
+              "ms": 130.96,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 6275,..."
+            },
+            {
+              "ms": 135.1,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 6275,..."
+            }
+          ],
+          "mean_ms": 133.3,
+          "p50_ms": 133.9,
+          "p95_ms": 135.1,
+          "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 6275,...",
+          "rss_kb": 26880,
+          "server": "solc",
+          "status": "ok"
+        },
+        {
+          "error": "timeout",
+          "rss_kb": 523728,
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "EOF",
+          "rss_kb": 0,
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "timeout",
+          "rss_kb": 71744,
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Go to Definition",
+      "servers": [
+        {
+          "iterations": [
+            {
+              "ms": 8.57,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 9.83,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 8.67,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 8.51,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 8.94,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 8.99,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 9.13,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 8.63,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 9.29,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 8.35,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            }
+          ],
+          "mean_ms": 8.9,
+          "p50_ms": 8.9,
+          "p95_ms": 9.8,
+          "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },...",
+          "rss_kb": 38560,
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "response": "[]",
+          "rss_kb": 26512,
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "rss_kb": 523920,
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "rss_kb": 0,
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "rss_kb": 71376,
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Go to Declaration",
+      "servers": [
+        {
+          "iterations": [
+            {
+              "ms": 9.62,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 8.8,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 8.59,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 8.51,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 9.3,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 8.76,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 9.72,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 8.96,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 8.26,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 8.25,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },..."
+            }
+          ],
+          "mean_ms": 8.9,
+          "p50_ms": 8.8,
+          "p95_ms": 9.7,
+          "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 16,\n      \"line\": 9\n    },...",
+          "rss_kb": 40432,
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "response": "error: Unknown method textDocument/declaration",
+          "rss_kb": 26432,
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "rss_kb": 525360,
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "rss_kb": 0,
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "rss_kb": 71648,
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Hover",
+      "servers": [
+        {
+          "iterations": [
+            {
+              "ms": 14.35,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 14.13,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 13.63,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 14.18,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 13.36,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 13.11,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 13.19,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 13.84,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 13.93,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 12.9,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            }
+          ],
+          "mean_ms": 13.7,
+          "p50_ms": 13.8,
+          "p95_ms": 14.3,
+          "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",...",
+          "rss_kb": 30256,
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "response": "null",
+          "rss_kb": 26208,
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "rss_kb": 499824,
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "rss_kb": 0,
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "rss_kb": 71712,
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Find References",
+      "servers": [
+        {
+          "iterations": [
+            {
+              "ms": 9.96,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 58,..."
+            },
+            {
+              "ms": 10.13,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 41,..."
+            },
+            {
+              "ms": 10.59,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 72,..."
+            },
+            {
+              "ms": 10.39,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 32,\n        \"line\": 96..."
+            },
+            {
+              "ms": 10.06,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 16,\n        \"line\": 9..."
+            },
+            {
+              "ms": 11.37,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 38,..."
+            },
+            {
+              "ms": 10.63,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 58,..."
+            },
+            {
+              "ms": 10.34,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 41,..."
+            },
+            {
+              "ms": 11.52,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 32,\n        \"line\": 95..."
+            },
+            {
+              "ms": 10.17,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 16,\n        \"line\": 8..."
+            }
+          ],
+          "mean_ms": 10.5,
+          "p50_ms": 10.4,
+          "p95_ms": 11.5,
+          "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 58,...",
+          "rss_kb": 30640,
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "response": "error: Unknown method textDocument/references",
+          "rss_kb": 26544,
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "rss_kb": 523312,
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "rss_kb": 0,
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "rss_kb": 71760,
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Document Symbols",
+      "servers": [
+        {
+          "iterations": [
+            {
+              "ms": 8.23,
+              "response": "[\n  {\n    \"kind\": 15,\n    \"name\": \"solidity ^0.8.0\",\n    \"range\": {..."
+            },
+            {
+              "ms": 8.09,
+              "response": "[\n  {\n    \"kind\": 15,\n    \"name\": \"solidity ^0.8.0\",\n    \"range\": {..."
+            },
+            {
+              "ms": 8.79,
+              "response": "[\n  {\n    \"kind\": 15,\n    \"name\": \"solidity ^0.8.0\",\n    \"range\": {..."
+            },
+            {
+              "ms": 8.45,
+              "response": "[\n  {\n    \"kind\": 15,\n    \"name\": \"solidity ^0.8.0\",\n    \"range\": {..."
+            },
+            {
+              "ms": 8.42,
+              "response": "[\n  {\n    \"kind\": 15,\n    \"name\": \"solidity ^0.8.0\",\n    \"range\": {..."
+            },
+            {
+              "ms": 8.3,
+              "response": "[\n  {\n    \"kind\": 15,\n    \"name\": \"solidity ^0.8.0\",\n    \"range\": {..."
+            },
+            {
+              "ms": 8.29,
+              "response": "[\n  {\n    \"kind\": 15,\n    \"name\": \"solidity ^0.8.0\",\n    \"range\": {..."
+            },
+            {
+              "ms": 8.49,
+              "response": "[\n  {\n    \"kind\": 15,\n    \"name\": \"solidity ^0.8.0\",\n    \"range\": {..."
+            },
+            {
+              "ms": 8.34,
+              "response": "[\n  {\n    \"kind\": 15,\n    \"name\": \"solidity ^0.8.0\",\n    \"range\": {..."
+            },
+            {
+              "ms": 8.16,
+              "response": "[\n  {\n    \"kind\": 15,\n    \"name\": \"solidity ^0.8.0\",\n    \"range\": {..."
+            }
+          ],
+          "mean_ms": 8.4,
+          "p50_ms": 8.3,
+          "p95_ms": 8.8,
+          "response": "[\n  {\n    \"kind\": 15,\n    \"name\": \"solidity ^0.8.0\",\n    \"range\": {...",
+          "rss_kb": 38608,
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "response": "error: Unknown method textDocument/documentSymbol",
+          "rss_kb": 26400,
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "rss_kb": 525424,
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "rss_kb": 0,
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "rss_kb": 71872,
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    },
+    {
+      "name": "Document Links",
+      "servers": [
+        {
+          "iterations": [
+            {
+              "ms": 64.5,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 16,\n        \"line\": 3..."
+            },
+            {
+              "ms": 63.45,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 16,\n        \"line\": 3..."
+            },
+            {
+              "ms": 63.71,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 16,\n        \"line\": 3..."
+            },
+            {
+              "ms": 61.89,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 16,\n        \"line\": 3..."
+            },
+            {
+              "ms": 61.12,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 16,\n        \"line\": 3..."
+            },
+            {
+              "ms": 61.68,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 16,\n        \"line\": 3..."
+            },
+            {
+              "ms": 61.93,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 16,\n        \"line\": 3..."
+            },
+            {
+              "ms": 62.72,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 16,\n        \"line\": 3..."
+            },
+            {
+              "ms": 63.72,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 16,\n        \"line\": 3..."
+            },
+            {
+              "ms": 62.24,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 16,\n        \"line\": 3..."
+            }
+          ],
+          "mean_ms": 62.7,
+          "p50_ms": 62.7,
+          "p95_ms": 64.5,
+          "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 16,\n        \"line\": 3...",
+          "rss_kb": 29648,
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "response": "error: Unknown method textDocument/documentLink",
+          "rss_kb": 26848,
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "rss_kb": 524768,
+          "server": "nomicfoundation",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: EOF",
+          "rss_kb": 0,
+          "server": "juanfranblanco",
+          "status": "fail"
+        },
+        {
+          "error": "wait_for_diagnostics: timeout",
+          "rss_kb": 70944,
+          "server": "qiuxiang",
+          "status": "fail"
+        }
+      ]
+    }
+  ],
+  "date": "2026-02-13",
+  "servers": [
+    {
+      "description": "Solidity Language Server by mmsaki",
+      "link": "https://github.com/mmsaki/solidity-language-server",
+      "name": "mmsaki",
+      "version": "solidity-language-server 0.1.14+commit.3d6a3d1.macos.aarch64"
+    },
+    {
+      "description": "Official Solidity compiler LSP",
+      "link": "https://docs.soliditylang.org",
+      "name": "solc",
+      "version": "0.8.33+commit.64118f21.Darwin.appleclang"
+    },
+    {
+      "description": "Hardhat/Nomic Foundation Solidity Language Server",
+      "link": "https://github.com/NomicFoundation/hardhat-vscode",
+      "name": "nomicfoundation",
+      "version": "@nomicfoundation/solidity-language-server 0.8.25"
+    },
+    {
+      "description": "VSCode Solidity by Juan Blanco",
+      "link": "https://github.com/juanfranblanco/vscode-solidity",
+      "name": "juanfranblanco",
+      "version": "vscode-solidity-server 0.0.187"
+    },
+    {
+      "description": "Solidity Language Server by qiuxiang",
+      "link": "https://github.com/qiuxiang/solidity-ls",
+      "name": "qiuxiang",
+      "version": "solidity-ls 0.5.4"
+    }
+  ],
+  "settings": {
+    "col": 15,
+    "file": "src/libraries/Pool.sol",
+    "index_timeout_secs": 15,
+    "iterations": 10,
+    "line": 102,
+    "project": "v4-core",
+    "timeout_secs": 10,
+    "warmup": 2
+  },
+  "timestamp": "2026-02-13T09:53:03Z"
+}

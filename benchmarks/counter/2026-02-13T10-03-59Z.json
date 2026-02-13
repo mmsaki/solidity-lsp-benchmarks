@@ -1,0 +1,1253 @@
+{
+  "benchmarks": [
+    {
+      "name": "initialize",
+      "servers": [
+        {
+          "iterations": [
+            {
+              "ms": 8.59,
+              "response": "ok"
+            },
+            {
+              "ms": 4.66,
+              "response": "ok"
+            },
+            {
+              "ms": 4.78,
+              "response": "ok"
+            },
+            {
+              "ms": 4.29,
+              "response": "ok"
+            },
+            {
+              "ms": 4.03,
+              "response": "ok"
+            },
+            {
+              "ms": 4.19,
+              "response": "ok"
+            },
+            {
+              "ms": 4.11,
+              "response": "ok"
+            },
+            {
+              "ms": 3.62,
+              "response": "ok"
+            },
+            {
+              "ms": 3.68,
+              "response": "ok"
+            },
+            {
+              "ms": 3.83,
+              "response": "ok"
+            }
+          ],
+          "mean_ms": 4.6,
+          "p50_ms": 4.2,
+          "p95_ms": 8.6,
+          "response": "ok",
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 114.48,
+              "response": "ok"
+            },
+            {
+              "ms": 117.47,
+              "response": "ok"
+            },
+            {
+              "ms": 117.18,
+              "response": "ok"
+            },
+            {
+              "ms": 115.67,
+              "response": "ok"
+            },
+            {
+              "ms": 110.64,
+              "response": "ok"
+            },
+            {
+              "ms": 109.19,
+              "response": "ok"
+            },
+            {
+              "ms": 113.71,
+              "response": "ok"
+            },
+            {
+              "ms": 113.22,
+              "response": "ok"
+            },
+            {
+              "ms": 112.32,
+              "response": "ok"
+            },
+            {
+              "ms": 113.9,
+              "response": "ok"
+            }
+          ],
+          "mean_ms": 113.8,
+          "p50_ms": 113.9,
+          "p95_ms": 117.5,
+          "response": "ok",
+          "server": "solc",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 878.9,
+              "response": "ok"
+            },
+            {
+              "ms": 870.8,
+              "response": "ok"
+            },
+            {
+              "ms": 869.93,
+              "response": "ok"
+            },
+            {
+              "ms": 852.35,
+              "response": "ok"
+            },
+            {
+              "ms": 860.27,
+              "response": "ok"
+            },
+            {
+              "ms": 851.93,
+              "response": "ok"
+            },
+            {
+              "ms": 875.07,
+              "response": "ok"
+            },
+            {
+              "ms": 879.97,
+              "response": "ok"
+            },
+            {
+              "ms": 872.43,
+              "response": "ok"
+            },
+            {
+              "ms": 865.07,
+              "response": "ok"
+            }
+          ],
+          "mean_ms": 867.7,
+          "p50_ms": 870.8,
+          "p95_ms": 880.0,
+          "response": "ok",
+          "server": "nomicfoundation",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 537.54,
+              "response": "ok"
+            },
+            {
+              "ms": 578.13,
+              "response": "ok"
+            },
+            {
+              "ms": 515.79,
+              "response": "ok"
+            },
+            {
+              "ms": 532.92,
+              "response": "ok"
+            },
+            {
+              "ms": 526.31,
+              "response": "ok"
+            },
+            {
+              "ms": 526.88,
+              "response": "ok"
+            },
+            {
+              "ms": 516.24,
+              "response": "ok"
+            },
+            {
+              "ms": 516.5,
+              "response": "ok"
+            },
+            {
+              "ms": 518.99,
+              "response": "ok"
+            },
+            {
+              "ms": 520.21,
+              "response": "ok"
+            }
+          ],
+          "mean_ms": 529.0,
+          "p50_ms": 526.3,
+          "p95_ms": 578.1,
+          "response": "ok",
+          "server": "juanfranblanco",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 70.29,
+              "response": "ok"
+            },
+            {
+              "ms": 69.01,
+              "response": "ok"
+            },
+            {
+              "ms": 68.37,
+              "response": "ok"
+            },
+            {
+              "ms": 69.31,
+              "response": "ok"
+            },
+            {
+              "ms": 70.8,
+              "response": "ok"
+            },
+            {
+              "ms": 68.15,
+              "response": "ok"
+            },
+            {
+              "ms": 69.69,
+              "response": "ok"
+            },
+            {
+              "ms": 71.1,
+              "response": "ok"
+            },
+            {
+              "ms": 71.47,
+              "response": "ok"
+            },
+            {
+              "ms": 70.07,
+              "response": "ok"
+            }
+          ],
+          "mean_ms": 69.8,
+          "p50_ms": 70.1,
+          "p95_ms": 71.5,
+          "response": "ok",
+          "server": "qiuxiang",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "name": "textDocument/diagnostic",
+      "servers": [
+        {
+          "iterations": [
+            {
+              "ms": 159.29,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 144.47,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 144.25,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 138.4,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 152.93,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 126.08,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 122.38,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 123.36,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 126.86,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 122.12,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            }
+          ],
+          "mean_ms": 136.0,
+          "p50_ms": 138.4,
+          "p95_ms": 159.3,
+          "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",...",
+          "rss_kb": 5056,
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 0.79,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 2072,..."
+            },
+            {
+              "ms": 0.81,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 2072,..."
+            },
+            {
+              "ms": 0.8,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 2072,..."
+            },
+            {
+              "ms": 0.94,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 2072,..."
+            },
+            {
+              "ms": 0.98,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 2072,..."
+            },
+            {
+              "ms": 0.81,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 2072,..."
+            },
+            {
+              "ms": 1.0,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 2072,..."
+            },
+            {
+              "ms": 0.91,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 2072,..."
+            },
+            {
+              "ms": 0.94,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 2072,..."
+            },
+            {
+              "ms": 0.85,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 2072,..."
+            }
+          ],
+          "mean_ms": 0.9,
+          "p50_ms": 0.9,
+          "p95_ms": 1.0,
+          "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": 2072,...",
+          "rss_kb": 26816,
+          "server": "solc",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 377.3,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 372.43,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 374.67,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 362.14,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 376.97,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 373.39,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 371.03,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 371.92,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 374.32,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 376.29,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            }
+          ],
+          "mean_ms": 373.0,
+          "p50_ms": 374.3,
+          "p95_ms": 377.3,
+          "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",...",
+          "rss_kb": 372320,
+          "server": "nomicfoundation",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 801.97,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 782.36,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 796.54,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 879.71,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 806.6,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 813.4,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 849.96,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 788.48,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 755.19,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 788.45,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            }
+          ],
+          "mean_ms": 806.3,
+          "p50_ms": 802.0,
+          "p95_ms": 879.7,
+          "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",...",
+          "rss_kb": 390208,
+          "server": "juanfranblanco",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 155.27,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 153.29,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 156.17,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 153.45,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 153.42,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 153.88,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 155.45,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 153.08,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 151.35,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            },
+            {
+              "ms": 153.04,
+              "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",..."
+            }
+          ],
+          "mean_ms": 153.8,
+          "p50_ms": 153.4,
+          "p95_ms": 156.2,
+          "response": "{\n  \"diagnostics\": [\n    {\n      \"code\": \"2072\",...",
+          "rss_kb": 61872,
+          "server": "qiuxiang",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "name": "textDocument/definition",
+      "servers": [
+        {
+          "iterations": [
+            {
+              "ms": 122.22,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 115.7,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 116.45,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 119.63,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 121.02,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 117.73,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 117.13,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 117.55,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 121.1,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 117.87,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            }
+          ],
+          "mean_ms": 118.6,
+          "p50_ms": 117.9,
+          "p95_ms": 122.2,
+          "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },...",
+          "rss_kb": 4960,
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 0.08,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.06,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.06,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.05,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.06,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.06,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.07,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.05,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.04,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.04,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            }
+          ],
+          "mean_ms": 0.1,
+          "p50_ms": 0.1,
+          "p95_ms": 0.1,
+          "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9...",
+          "rss_kb": 26432,
+          "server": "solc",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 0.43,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 0.65,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 0.45,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 0.32,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 0.44,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 0.35,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 0.3,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 0.28,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 0.2,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            },
+            {
+              "ms": 0.16,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },..."
+            }
+          ],
+          "mean_ms": 0.4,
+          "p50_ms": 0.4,
+          "p95_ms": 0.7,
+          "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 25,\n      \"line\": 9\n    },...",
+          "rss_kb": 364528,
+          "server": "nomicfoundation",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 0.46,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.5,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.44,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.44,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.36,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.26,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.3,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.33,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.27,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.32,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            }
+          ],
+          "mean_ms": 0.4,
+          "p50_ms": 0.4,
+          "p95_ms": 0.5,
+          "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9...",
+          "rss_kb": 389584,
+          "server": "juanfranblanco",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 0.38,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 26,\n      \"line\": 19\n    },..."
+            },
+            {
+              "ms": 0.33,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 26,\n      \"line\": 19\n    },..."
+            },
+            {
+              "ms": 0.3,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 26,\n      \"line\": 19\n    },..."
+            },
+            {
+              "ms": 0.26,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 26,\n      \"line\": 19\n    },..."
+            },
+            {
+              "ms": 0.27,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 26,\n      \"line\": 19\n    },..."
+            },
+            {
+              "ms": 0.21,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 26,\n      \"line\": 19\n    },..."
+            },
+            {
+              "ms": 0.3,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 26,\n      \"line\": 19\n    },..."
+            },
+            {
+              "ms": 0.22,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 26,\n      \"line\": 19\n    },..."
+            },
+            {
+              "ms": 0.15,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 26,\n      \"line\": 19\n    },..."
+            },
+            {
+              "ms": 0.16,
+              "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 26,\n      \"line\": 19\n    },..."
+            }
+          ],
+          "mean_ms": 0.3,
+          "p50_ms": 0.3,
+          "p95_ms": 0.4,
+          "response": "{\n  \"range\": {\n    \"end\": {\n      \"character\": 26,\n      \"line\": 19\n    },...",
+          "rss_kb": 61408,
+          "server": "qiuxiang",
+          "status": "ok"
+        }
+      ]
+    },
+    {
+      "name": "textDocument/hover",
+      "servers": [
+        {
+          "iterations": [
+            {
+              "ms": 124.03,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 123.96,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 119.82,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 117.62,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 121.85,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 118.38,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 178.47,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 128.04,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 124.73,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 122.65,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            }
+          ],
+          "mean_ms": 128.0,
+          "p50_ms": 124.0,
+          "p95_ms": 178.5,
+          "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",...",
+          "rss_kb": 4976,
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 0.05,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.06,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.07,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.05,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.04,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.04,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.04,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.03,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.03,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.03,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            }
+          ],
+          "mean_ms": 0.0,
+          "p50_ms": 0.0,
+          "p95_ms": 0.1,
+          "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",...",
+          "rss_kb": 26320,
+          "server": "solc",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 0.38,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.37,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.36,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.43,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.35,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.32,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.3,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.27,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.21,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.17,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            }
+          ],
+          "mean_ms": 0.3,
+          "p50_ms": 0.3,
+          "p95_ms": 0.4,
+          "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",...",
+          "rss_kb": 360832,
+          "server": "nomicfoundation",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 0.41,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.35,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.25,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.34,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.34,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.25,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.27,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.26,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.21,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            },
+            {
+              "ms": 0.24,
+              "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",..."
+            }
+          ],
+          "mean_ms": 0.3,
+          "p50_ms": 0.3,
+          "p95_ms": 0.4,
+          "response": "{\n  \"contents\": {\n    \"kind\": \"markdown\",...",
+          "rss_kb": 387792,
+          "server": "juanfranblanco",
+          "status": "ok"
+        },
+        {
+          "response": "null",
+          "rss_kb": 61488,
+          "server": "qiuxiang",
+          "status": "invalid"
+        }
+      ]
+    },
+    {
+      "name": "textDocument/references",
+      "servers": [
+        {
+          "iterations": [
+            {
+              "ms": 0.44,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.44,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 14,\n        \"line\": 26..."
+            },
+            {
+              "ms": 0.41,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 14,\n        \"line\": 32..."
+            },
+            {
+              "ms": 0.41,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 14,\n        \"line\": 32..."
+            },
+            {
+              "ms": 0.46,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.47,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 14,\n        \"line\": 26..."
+            },
+            {
+              "ms": 0.49,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 28,\n        \"line\": 20..."
+            },
+            {
+              "ms": 0.37,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 14,\n        \"line\": 21..."
+            },
+            {
+              "ms": 0.39,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 14,\n        \"line\": 26..."
+            },
+            {
+              "ms": 0.44,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            }
+          ],
+          "mean_ms": 0.4,
+          "p50_ms": 0.4,
+          "p95_ms": 0.5,
+          "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9...",
+          "rss_kb": 5024,
+          "server": "mmsaki",
+          "status": "ok"
+        },
+        {
+          "response": "error: Unknown method textDocument/references",
+          "rss_kb": 26832,
+          "server": "solc",
+          "status": "invalid"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 0.31,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.3,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.3,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.35,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.42,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.3,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.44,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.24,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.23,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.2,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9..."
+            }
+          ],
+          "mean_ms": 0.3,
+          "p50_ms": 0.3,
+          "p95_ms": 0.4,
+          "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 25,\n        \"line\": 9...",
+          "rss_kb": 362384,
+          "server": "nomicfoundation",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 0.76,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.85,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.7,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.65,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.52,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.58,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.63,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.65,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 0.62,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            },
+            {
+              "ms": 2.79,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9..."
+            }
+          ],
+          "mean_ms": 0.9,
+          "p50_ms": 0.7,
+          "p95_ms": 2.8,
+          "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 9...",
+          "rss_kb": 388880,
+          "server": "juanfranblanco",
+          "status": "ok"
+        },
+        {
+          "iterations": [
+            {
+              "ms": 0.23,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 19..."
+            },
+            {
+              "ms": 0.22,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 19..."
+            },
+            {
+              "ms": 0.19,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 19..."
+            },
+            {
+              "ms": 0.19,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 19..."
+            },
+            {
+              "ms": 0.37,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 19..."
+            },
+            {
+              "ms": 0.24,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 19..."
+            },
+            {
+              "ms": 0.22,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 19..."
+            },
+            {
+              "ms": 0.18,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 19..."
+            },
+            {
+              "ms": 0.14,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 19..."
+            },
+            {
+              "ms": 0.15,
+              "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 19..."
+            }
+          ],
+          "mean_ms": 0.2,
+          "p50_ms": 0.2,
+          "p95_ms": 0.4,
+          "response": "[\n  {\n    \"range\": {\n      \"end\": {\n        \"character\": 26,\n        \"line\": 19...",
+          "rss_kb": 61584,
+          "server": "qiuxiang",
+          "status": "ok"
+        }
+      ]
+    }
+  ],
+  "date": "2026-02-13",
+  "servers": [
+    {
+      "description": "Solidity Language Server by mmsaki",
+      "link": "https://github.com/mmsaki/solidity-language-server",
+      "name": "mmsaki",
+      "version": "solidity-language-server 0.1.14+commit.3d6a3d1.macos.aarch64"
+    },
+    {
+      "description": "Official Solidity compiler LSP",
+      "link": "https://docs.soliditylang.org",
+      "name": "solc",
+      "version": "0.8.33+commit.64118f21.Darwin.appleclang"
+    },
+    {
+      "description": "Hardhat/Nomic Foundation Solidity Language Server",
+      "link": "https://github.com/NomicFoundation/hardhat-vscode",
+      "name": "nomicfoundation",
+      "version": "@nomicfoundation/solidity-language-server 0.8.25"
+    },
+    {
+      "description": "VSCode Solidity by Juan Blanco",
+      "link": "https://github.com/juanfranblanco/vscode-solidity",
+      "name": "juanfranblanco",
+      "version": "vscode-solidity-server 0.0.187"
+    },
+    {
+      "description": "Solidity Language Server by qiuxiang",
+      "link": "https://github.com/qiuxiang/solidity-ls",
+      "name": "qiuxiang",
+      "version": "solidity-ls 0.5.4"
+    }
+  ],
+  "settings": {
+    "col": 8,
+    "file": "Counter.sol",
+    "index_timeout_secs": 15,
+    "iterations": 10,
+    "line": 21,
+    "project": "examples",
+    "timeout_secs": 10,
+    "warmup": 2
+  },
+  "timestamp": "2026-02-13T10:03:59Z"
+}
