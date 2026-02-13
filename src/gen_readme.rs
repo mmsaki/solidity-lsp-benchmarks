@@ -448,7 +448,7 @@ fn generate_readme(data: &Value, json_path: &str) -> String {
                                     .get("response")
                                     .and_then(|v| v.as_str())
                                     .unwrap_or("(no response)");
-                                let truncated = truncate_response(response, 200);
+                                let truncated = truncate_response(response, 80);
                                 l.push("```json".into());
                                 l.push(truncated);
                                 l.push("```".into());

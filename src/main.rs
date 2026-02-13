@@ -671,7 +671,7 @@ fn bench_diagnostics(
                 let ms = start.elapsed().as_secs_f64() * 1000.0;
                 on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
                 if i >= w {
-                    let summary = response_summary(&diag_info.message, 500);
+                    let summary = response_summary(&diag_info.message, 80);
                     iterations.push((ms, summary));
                 }
             }
@@ -732,7 +732,7 @@ fn bench_lsp_method(
                             first_response: resp,
                         };
                     }
-                    let summary = response_summary(&resp, 500);
+                    let summary = response_summary(&resp, 80);
                     iterations.push((ms, summary));
                 }
             }
@@ -773,7 +773,7 @@ where
                 });
             }
             BenchResult::Invalid { first_response } => {
-                let summary = response_summary(&first_response, 500);
+                let summary = response_summary(&first_response, 80);
                 finish_fail(&pb, "invalid response");
                 rows.push(BenchRow {
                     label: srv.label.to_string(),
