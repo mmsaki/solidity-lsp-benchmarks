@@ -2,6 +2,16 @@
 
 Analysis of `v4-core` (`src/libraries/Pool.sol`) — 10 iterations per benchmark.
 
+## Servers
+
+| Server | Description | Version |
+|--------|-------------|---------|
+| [mmsaki](https://github.com/mmsaki/solidity-language-server) | Solidity Language Server by mmsaki | `solidity-language-server 0.1.14+commit.3d6a3d1.macos.aarch64` |
+| [solc](https://docs.soliditylang.org) | Official Solidity compiler LSP | `0.8.33+commit.64118f21.Darwin.appleclang` |
+| [nomicfoundation](https://github.com/NomicFoundation/hardhat-vscode) | Hardhat/Nomic Foundation Solidity Language Server | `@nomicfoundation/solidity-language-server 0.8.25` |
+| [juanfranblanco](https://github.com/juanfranblanco/vscode-solidity) | VSCode Solidity by Juan Blanco | `vscode-solidity-server 0.0.187` |
+| [qiuxiang](https://github.com/qiuxiang/solidity-ls) | Solidity Language Server by qiuxiang | `solidity-ls 0.5.4` |
+
 ## Capability Matrix
 
 | Benchmark | mmsaki | solc | nomicfoundation | juanfranblanco | qiuxiang |
@@ -35,73 +45,73 @@ Analysis of `v4-core` (`src/libraries/Pool.sol`) — 10 iterations per benchmark
 
 ## textDocument/diagnostic
 
-| Server | Status | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | Overhead | RSS | vs mmsaki |
-|--------|--------|------|-----|-----|--------|-------|-----|-----|-------|----------|-----|-----------|
-| mmsaki | ok | 454.45ms | 452.1ms | 473.6ms | **21.5ms** | 1.05x | 449.46ms | 473.56ms | **24.10ms** | 3.3x | 39.7 MB | - |
-| solc | ok | 136.80ms | 136.7ms | 138.3ms | 1.6ms | 1.01x | 135.92ms | 138.35ms | 2.43ms | **1.0x (fastest)** | 26.2 MB | 3.3x faster |
-| nomicfoundation | timeout | - | - | - | - | - | - | - | - | - | 509.9 MB | timeout |
-| juanfranblanco | crash | - | - | - | - | - | - | - | - | - | 0.0 MB | crash |
-| qiuxiang | timeout | - | - | - | - | - | - | - | - | - | 69.7 MB | timeout |
+| Server | Status | Mem | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | Overhead | vs mmsaki |
+|--------|--------|-----|------|-----|-----|--------|-------|-----|-----|-------|----------|-----------|
+| mmsaki | ok | 39.7 MB | 454.45ms | 452.1ms | 473.6ms | **21.5ms** | 1.05x | 449.46ms | 473.56ms | **24.10ms** | 3.3x | - |
+| solc | ok | 26.2 MB | 136.80ms | 136.7ms | 138.3ms | 1.6ms | 1.01x | 135.92ms | 138.35ms | 2.43ms | **1.0x (fastest)** | 3.3x faster |
+| nomicfoundation | timeout | 509.9 MB | - | - | - | - | - | - | - | - | - | timeout |
+| juanfranblanco | crash | 0.0 MB | - | - | - | - | - | - | - | - | - | crash |
+| qiuxiang | timeout | 69.7 MB | - | - | - | - | - | - | - | - | - | timeout |
 
 ## textDocument/definition
 
-| Server | Status | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | RSS | vs mmsaki |
-|--------|--------|------|-----|-----|--------|-------|-----|-----|-------|-----|-----------|
-| mmsaki | ok | 8.95ms | 9.2ms | 9.5ms | 0.3ms | 1.04x | 8.51ms | 9.52ms | 1.01ms | 26.4 MB | - |
-| solc | empty | - | - | - | - | - | - | - | - | 26.2 MB | empty |
-| nomicfoundation | timeout | - | - | - | - | - | - | - | - | 509.7 MB | timeout |
-| juanfranblanco | crash | - | - | - | - | - | - | - | - | 0.0 MB | crash |
-| qiuxiang | timeout | - | - | - | - | - | - | - | - | 68.7 MB | timeout |
+| Server | Status | Mem | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | vs mmsaki |
+|--------|--------|-----|------|-----|-----|--------|-------|-----|-----|-------|-----------|
+| mmsaki | ok | 26.4 MB | 8.95ms | 9.2ms | 9.5ms | 0.3ms | 1.04x | 8.51ms | 9.52ms | 1.01ms | - |
+| solc | empty | 26.2 MB | - | - | - | - | - | - | - | - | empty |
+| nomicfoundation | timeout | 509.7 MB | - | - | - | - | - | - | - | - | timeout |
+| juanfranblanco | crash | 0.0 MB | - | - | - | - | - | - | - | - | crash |
+| qiuxiang | timeout | 68.7 MB | - | - | - | - | - | - | - | - | timeout |
 
 ## textDocument/declaration
 
-| Server | Status | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | RSS | vs mmsaki |
-|--------|--------|------|-----|-----|--------|-------|-----|-----|-------|-----|-----------|
-| mmsaki | ok | 9.04ms | 8.9ms | 9.9ms | 1.0ms | 1.11x | 8.58ms | 9.86ms | 1.28ms | 35.7 MB | - |
-| solc | no | - | - | - | - | - | - | - | - | 26.1 MB | empty |
-| nomicfoundation | timeout | - | - | - | - | - | - | - | - | 510.8 MB | timeout |
-| juanfranblanco | crash | - | - | - | - | - | - | - | - | 0.0 MB | crash |
-| qiuxiang | timeout | - | - | - | - | - | - | - | - | 69.4 MB | timeout |
+| Server | Status | Mem | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | vs mmsaki |
+|--------|--------|-----|------|-----|-----|--------|-------|-----|-----|-------|-----------|
+| mmsaki | ok | 35.7 MB | 9.04ms | 8.9ms | 9.9ms | 1.0ms | 1.11x | 8.58ms | 9.86ms | 1.28ms | - |
+| solc | no | 26.1 MB | - | - | - | - | - | - | - | - | empty |
+| nomicfoundation | timeout | 510.8 MB | - | - | - | - | - | - | - | - | timeout |
+| juanfranblanco | crash | 0.0 MB | - | - | - | - | - | - | - | - | crash |
+| qiuxiang | timeout | 69.4 MB | - | - | - | - | - | - | - | - | timeout |
 
 ## textDocument/hover
 
-| Server | Status | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | RSS | vs mmsaki |
-|--------|--------|------|-----|-----|--------|-------|-----|-----|-------|-----|-----------|
-| mmsaki | ok | 14.01ms | 14.0ms | 14.7ms | 0.7ms | 1.05x | 13.51ms | 14.67ms | 1.16ms | 30.0 MB | - |
-| solc | empty | - | - | - | - | - | - | - | - | 26.0 MB | empty |
-| nomicfoundation | timeout | - | - | - | - | - | - | - | - | 511.8 MB | timeout |
-| juanfranblanco | crash | - | - | - | - | - | - | - | - | 0.0 MB | crash |
-| qiuxiang | timeout | - | - | - | - | - | - | - | - | 69.9 MB | timeout |
+| Server | Status | Mem | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | vs mmsaki |
+|--------|--------|-----|------|-----|-----|--------|-------|-----|-----|-------|-----------|
+| mmsaki | ok | 30.0 MB | 14.01ms | 14.0ms | 14.7ms | 0.7ms | 1.05x | 13.51ms | 14.67ms | 1.16ms | - |
+| solc | empty | 26.0 MB | - | - | - | - | - | - | - | - | empty |
+| nomicfoundation | timeout | 511.8 MB | - | - | - | - | - | - | - | - | timeout |
+| juanfranblanco | crash | 0.0 MB | - | - | - | - | - | - | - | - | crash |
+| qiuxiang | timeout | 69.9 MB | - | - | - | - | - | - | - | - | timeout |
 
 ## textDocument/references
 
-| Server | Status | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | RSS | vs mmsaki |
-|--------|--------|------|-----|-----|--------|-------|-----|-----|-------|-----|-----------|
-| mmsaki | ok | 11.06ms | 10.6ms | 14.4ms | 3.8ms | 1.36x | 10.24ms | 14.40ms | 4.16ms | 30.3 MB | - |
-| solc | no | - | - | - | - | - | - | - | - | 26.1 MB | empty |
-| nomicfoundation | timeout | - | - | - | - | - | - | - | - | 511.7 MB | timeout |
-| juanfranblanco | crash | - | - | - | - | - | - | - | - | 0.0 MB | crash |
-| qiuxiang | timeout | - | - | - | - | - | - | - | - | 70.1 MB | timeout |
+| Server | Status | Mem | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | vs mmsaki |
+|--------|--------|-----|------|-----|-----|--------|-------|-----|-----|-------|-----------|
+| mmsaki | ok | 30.3 MB | 11.06ms | 10.6ms | 14.4ms | 3.8ms | 1.36x | 10.24ms | 14.40ms | 4.16ms | - |
+| solc | no | 26.1 MB | - | - | - | - | - | - | - | - | empty |
+| nomicfoundation | timeout | 511.7 MB | - | - | - | - | - | - | - | - | timeout |
+| juanfranblanco | crash | 0.0 MB | - | - | - | - | - | - | - | - | crash |
+| qiuxiang | timeout | 70.1 MB | - | - | - | - | - | - | - | - | timeout |
 
 ## textDocument/documentSymbol
 
-| Server | Status | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | RSS | vs mmsaki |
-|--------|--------|------|-----|-----|--------|-------|-----|-----|-------|-----|-----------|
-| mmsaki | ok | 8.72ms | 8.8ms | 9.2ms | 0.3ms | 1.04x | 8.26ms | 9.17ms | 0.91ms | 25.8 MB | - |
-| solc | no | - | - | - | - | - | - | - | - | 26.1 MB | empty |
-| nomicfoundation | timeout | - | - | - | - | - | - | - | - | 513.5 MB | timeout |
-| juanfranblanco | crash | - | - | - | - | - | - | - | - | 0.0 MB | crash |
-| qiuxiang | timeout | - | - | - | - | - | - | - | - | 70.0 MB | timeout |
+| Server | Status | Mem | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | vs mmsaki |
+|--------|--------|-----|------|-----|-----|--------|-------|-----|-----|-------|-----------|
+| mmsaki | ok | 25.8 MB | 8.72ms | 8.8ms | 9.2ms | 0.3ms | 1.04x | 8.26ms | 9.17ms | 0.91ms | - |
+| solc | no | 26.1 MB | - | - | - | - | - | - | - | - | empty |
+| nomicfoundation | timeout | 513.5 MB | - | - | - | - | - | - | - | - | timeout |
+| juanfranblanco | crash | 0.0 MB | - | - | - | - | - | - | - | - | crash |
+| qiuxiang | timeout | 70.0 MB | - | - | - | - | - | - | - | - | timeout |
 
 ## textDocument/documentLink
 
-| Server | Status | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | RSS | vs mmsaki |
-|--------|--------|------|-----|-----|--------|-------|-----|-----|-------|-----|-----------|
-| mmsaki | ok | 64.32ms | 64.5ms | 65.2ms | 0.7ms | 1.01x | 63.34ms | 65.24ms | 1.90ms | 26.7 MB | - |
-| solc | no | - | - | - | - | - | - | - | - | 25.7 MB | empty |
-| nomicfoundation | timeout | - | - | - | - | - | - | - | - | 511.9 MB | timeout |
-| juanfranblanco | crash | - | - | - | - | - | - | - | - | 0.0 MB | crash |
-| qiuxiang | timeout | - | - | - | - | - | - | - | - | 69.5 MB | timeout |
+| Server | Status | Mem | Mean | p50 | p95 | Spread | Spike | Min | Max | Range | vs mmsaki |
+|--------|--------|-----|------|-----|-----|--------|-------|-----|-----|-------|-----------|
+| mmsaki | ok | 26.7 MB | 64.32ms | 64.5ms | 65.2ms | 0.7ms | 1.01x | 63.34ms | 65.24ms | 1.90ms | - |
+| solc | no | 25.7 MB | - | - | - | - | - | - | - | - | empty |
+| nomicfoundation | timeout | 511.9 MB | - | - | - | - | - | - | - | - | timeout |
+| juanfranblanco | crash | 0.0 MB | - | - | - | - | - | - | - | - | crash |
+| qiuxiang | timeout | 69.5 MB | - | - | - | - | - | - | - | - | timeout |
 
 ## Peak Memory (RSS)
 

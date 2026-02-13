@@ -130,6 +130,33 @@ fn generate_analysis(data: &Value, json_path: &str, lead_override: Option<&str>)
         l.push(String::new());
     }
 
+    // ── Servers table ──────────────────────────────────────────────────
+    if let Some(servers) = data.get("servers").and_then(|s| s.as_array()) {
+        l.push("## Servers".into());
+        l.push(String::new());
+        l.push("| Server | Description | Version |".into());
+        l.push("|--------|-------------|---------|".into());
+        for srv in servers {
+            let name = srv.get("name").and_then(|n| n.as_str()).unwrap_or("?");
+            let link = srv.get("link").and_then(|v| v.as_str()).unwrap_or("");
+            let description = srv
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let version = srv.get("version").and_then(|v| v.as_str()).unwrap_or("?");
+            let name_cell = if link.is_empty() {
+                name.to_string()
+            } else {
+                format!("[{}]({})", name, link)
+            };
+            l.push(format!(
+                "| {} | {} | `{}` |",
+                name_cell, description, version
+            ));
+        }
+        l.push(String::new());
+    }
+
     let benchmarks = match data.get("benchmarks").and_then(|b| b.as_array()) {
         Some(b) => b,
         None => {
@@ -260,8 +287,14 @@ fn generate_analysis(data: &Value, json_path: &str, lead_override: Option<&str>)
         let show_overhead = fastest_mean.is_some() && ok_count > 1;
         let show_h2h = lead_name.is_some() && server_names.len() > 1;
 
-        let mut hdr = "| Server | Status | Mean |".to_string();
-        let mut div = "|--------|--------|------|".to_string();
+        let mut hdr = "| Server | Status |".to_string();
+        let mut div = "|--------|--------|".to_string();
+        if has_rss {
+            hdr.push_str(" Mem |");
+            div.push_str("-----|");
+        }
+        hdr.push_str(" Mean |");
+        div.push_str("------|");
         if has_p50 {
             hdr.push_str(" p50 | p95 | Spread | Spike |");
             div.push_str("-----|-----|--------|-------|");
@@ -273,10 +306,6 @@ fn generate_analysis(data: &Value, json_path: &str, lead_override: Option<&str>)
         if show_overhead {
             hdr.push_str(" Overhead |");
             div.push_str("----------|");
-        }
-        if has_rss {
-            hdr.push_str(" RSS |");
-            div.push_str("-----|");
         }
         if show_h2h {
             hdr.push_str(&format!(" vs {} |", lead_name.unwrap()));
@@ -305,7 +334,19 @@ fn generate_analysis(data: &Value, json_path: &str, lead_override: Option<&str>)
                 _ => "-".to_string(),
             };
 
-            let mut row = format!("| {} | {} | {} |", name, status_label, mean_str);
+            let mut row = format!("| {} | {} |", name, status_label);
+
+            // Mem (RSS) — right after status
+            if has_rss {
+                if let Some(rss) = srv.get("rss_kb").and_then(|v| v.as_u64()) {
+                    let mb = rss as f64 / 1024.0;
+                    row.push_str(&format!(" {:.1} MB |", mb));
+                } else {
+                    row.push_str(" - |");
+                }
+            }
+
+            row.push_str(&format!(" {} |", mean_str));
 
             // p50/p95/spread/spike
             if has_p50 {
@@ -377,16 +418,6 @@ fn generate_analysis(data: &Value, json_path: &str, lead_override: Option<&str>)
                     } else {
                         row.push_str(" - |");
                     }
-                } else {
-                    row.push_str(" - |");
-                }
-            }
-
-            // RSS
-            if has_rss {
-                if let Some(rss) = srv.get("rss_kb").and_then(|v| v.as_u64()) {
-                    let mb = rss as f64 / 1024.0;
-                    row.push_str(&format!(" {:.1} MB |", mb));
                 } else {
                     row.push_str(" - |");
                 }
