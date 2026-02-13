@@ -396,8 +396,8 @@ fn generate_analysis(data: &Value, json_path: &str, lead_override: Option<&str>)
         );
         l.push(String::new());
 
-        l.push("| Benchmark | Server | RSS |".into());
-        l.push("|-----------|--------|-----|".into());
+        l.push("| Benchmark | Server | Status | RSS |".into());
+        l.push("|-----------|--------|--------|-----|".into());
 
         for bench in benchmarks {
             let bench_name = bench.get("name").and_then(|n| n.as_str()).unwrap_or("?");
@@ -406,7 +406,18 @@ fn generate_analysis(data: &Value, json_path: &str, lead_override: Option<&str>)
                     let name = srv.get("server").and_then(|v| v.as_str()).unwrap_or("?");
                     if let Some(rss) = srv.get("rss_kb").and_then(|v| v.as_u64()) {
                         let mb = rss as f64 / 1024.0;
-                        l.push(format!("| {} | {} | {:.1} MB |", bench_name, name, mb));
+                        let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("?");
+                        let error = srv.get("error").and_then(|v| v.as_str()).unwrap_or("");
+                        let status_str = match status {
+                            "ok" => "ok".to_string(),
+                            "invalid" => "empty".to_string(),
+                            _ if error.contains("timeout") => "timeout".to_string(),
+                            _ => "crash".to_string(),
+                        };
+                        l.push(format!(
+                            "| {} | {} | {} | {:.1} MB |",
+                            bench_name, name, status_str, mb
+                        ));
                     }
                 }
             }

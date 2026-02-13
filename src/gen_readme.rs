@@ -362,6 +362,63 @@ fn generate_readme(data: &Value, json_path: &str) -> String {
             );
             l.push(String::new());
 
+            // ── Memory usage ─────────────────────────────────────────
+            // Check if any server has rss_kb data
+            let has_rss = benchmarks.iter().any(|bench| {
+                bench
+                    .get("servers")
+                    .and_then(|s| s.as_array())
+                    .map(|servers| {
+                        servers
+                            .iter()
+                            .any(|s| s.get("rss_kb").and_then(|v| v.as_u64()).is_some())
+                    })
+                    .unwrap_or(false)
+            });
+
+            if has_rss {
+                l.push("## Memory Usage".into());
+                l.push(String::new());
+                l.push("Peak resident set size (RSS) measured after indexing.".into());
+                l.push(String::new());
+
+                // Collect peak RSS per server across all benchmarks
+                let mut header = "| Server |".to_string();
+                let mut sep = "|--------|".to_string();
+                header.push_str(" Peak RSS | Measured During |");
+                sep.push_str("----------|-----------------|");
+                l.push(header);
+                l.push(sep);
+
+                for name in &server_names {
+                    let mut peak: Option<u64> = None;
+                    let mut peak_bench = "";
+                    for bench in benchmarks.iter() {
+                        let bench_name = bench.get("name").and_then(|n| n.as_str()).unwrap_or("?");
+                        if let Some(servers) = bench.get("servers").and_then(|s| s.as_array()) {
+                            for srv in servers {
+                                let srv_name =
+                                    srv.get("server").and_then(|v| v.as_str()).unwrap_or("");
+                                if srv_name != *name {
+                                    continue;
+                                }
+                                if let Some(rss) = srv.get("rss_kb").and_then(|v| v.as_u64()) {
+                                    if peak.map_or(true, |p| rss > p) {
+                                        peak = Some(rss);
+                                        peak_bench = bench_name;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if let Some(p) = peak {
+                        let mb = p as f64 / 1024.0;
+                        l.push(format!("| **{}** | {:.1} MB | {} |", name, mb, peak_bench));
+                    }
+                }
+                l.push(String::new());
+            }
+
             // ── Per-benchmark detail sections ──────────────────────────
             l.push("---".into());
             l.push(String::new());

@@ -349,6 +349,24 @@ For successful benchmarks, three latency metrics are reported:
 - **p95**: The worst-case response time (excluding outliers). 95% of iterations were faster.
 - **mean**: The arithmetic average across all measured iterations.
 
+### Memory measurement
+
+Each benchmark measures the server's **Resident Set Size (RSS)** -- the amount of physical memory the process is using. RSS is sampled via `ps -o rss= -p <pid>` after the server finishes indexing (post-diagnostics).
+
+Memory is measured in all outcomes:
+
+| Scenario | When RSS is sampled |
+|----------|---------------------|
+| Diagnostics (success) | After diagnostics complete, before the server is killed. Peak RSS across all iterations is recorded. |
+| Diagnostics (timeout/crash) | Right before returning the failure. The server is still alive, so RSS reflects memory consumed while stuck. |
+| Method benchmarks (success) | Once after indexing completes, before the request loop begins. |
+| Method benchmarks (timeout/crash) | Right before returning the failure. |
+| Spawn | Not measured (process is too short-lived). |
+
+This means even servers that timeout or crash will have their memory usage recorded. For example, a Node.js server that times out after 15 seconds of indexing will show how much memory it consumed before giving up.
+
+The value is stored as `rss_kb` (kilobytes) in the JSON output. Both `gen-readme` and `gen-analysis` display it in megabytes.
+
 ## Generate README
 
 After running benchmarks, generate the README from JSON data:
