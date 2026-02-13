@@ -6,6 +6,8 @@ Benchmarks comparing Solidity LSP servers against Uniswap V4-core (`Pool.sol`, 6
 
 | Setting | Value |
 |---------|-------|
+| File | `src/libraries/Pool.sol` |
+| Target position | line 0, col 0 |
 | Iterations | 10 |
 | Warmup | 2 |
 | Request timeout | 10s |
@@ -15,7 +17,7 @@ Benchmarks comparing Solidity LSP servers against Uniswap V4-core (`Pool.sol`, 6
 
 | Server | Version |
 |--------|---------|
-| Our LSP | `solidity-language-server 0.1.13+commit.843bd50.macos.aarch64` |
+| mmsaki | `solidity-language-server 0.1.13+commit.843bd50.macos.aarch64` |
 | solc | `0.8.33+commit.64118f21.Darwin.appleclang` |
 | nomicfoundation | `@nomicfoundation/solidity-language-server 0.8.25` |
 | juanfranblanco | `vscode-solidity-server 0.0.187` |
@@ -23,24 +25,24 @@ Benchmarks comparing Solidity LSP servers against Uniswap V4-core (`Pool.sol`, 6
 
 ## Results
 
-| Benchmark | Our LSP 🏆 | solc | nomicfoundation | juanfranblanco | qiuxiang |
-|-----------|--------------|------|-----------------|----------------|----------|
-| [Spawn + Init](#spawn--init) | 4.4ms 🥇 | 114.7ms 🥉 | 872.4ms | 509.3ms | 68.3ms 🥈 |
-| [Diagnostics](#diagnostics) | 439.7ms 🥈 | 132.8ms 🥇 | timeout | FAIL | timeout |
-| [Go to Definition](#go-to-definition) | 8.5ms 🥇 | - | timeout | FAIL | timeout |
-| [Go to Declaration](#go-to-declaration) | 8.5ms 🥇 | unsupported | timeout | FAIL | timeout |
-| [Hover](#hover) | 14.3ms 🥇 | - | timeout | FAIL | timeout |
+| Benchmark | mmsaki 🏆 | solc | nomicfoundation | juanfranblanco | qiuxiang |
+|-----------|-------------|------|-----------------|----------------|----------|
+| [Spawn + Init](#spawn--init) | 3.9ms 🥇 | 112.3ms 🥉 | 865.6ms | 518.6ms | 70.2ms 🥈 |
+| [Diagnostics](#diagnostics) | 445.1ms 🥈 | 135.4ms 🥇 | timeout | FAIL | timeout |
+| [Go to Definition](#go-to-definition) | 8.6ms 🥇 | - | timeout | FAIL | timeout |
+| [Go to Declaration](#go-to-declaration) | 8.7ms 🥇 | unsupported | timeout | FAIL | timeout |
+| [Hover](#hover) | 13.6ms 🥇 | - | timeout | FAIL | timeout |
 | [Find References](#find-references) | 10.4ms 🥇 | unsupported | timeout | FAIL | timeout |
-| [Document Symbols](#document-symbols) | 8.6ms 🥇 | unsupported | timeout | FAIL | timeout |
-| [Document Links](#document-links) | 62.7ms 🥇 | unsupported | timeout | FAIL | timeout |
+| [Document Symbols](#document-symbols) | 8.4ms 🥇 | unsupported | timeout | FAIL | timeout |
+| [Document Links](#document-links) | 64.1ms 🥇 | unsupported | timeout | FAIL | timeout |
 
-> **🏆 Overall Winner: Our LSP** — 7 🥇 out of 8 benchmarks
+> **🏆 Overall Winner: mmsaki** — 7 🥇 out of 8 benchmarks
 
 ### Medal Tally
 
 | Server | 🥇 Gold | 🥈 Silver | 🥉 Bronze | Score |
 |--------|------|----------|----------|-------|
-| **Our LSP** 🏆 | 7 | 1 | 0 | 23 |
+| **mmsaki** 🏆 | 7 | 1 | 0 | 23 |
 | **solc** | 1 | 0 | 1 | 4 |
 | **qiuxiang** | 0 | 1 | 0 | 2 |
 | **nomicfoundation** | 0 | 0 | 0 | 0 |
@@ -48,8 +50,8 @@ Benchmarks comparing Solidity LSP servers against Uniswap V4-core (`Pool.sol`, 6
 
 ## Feature Support
 
-| Feature | Our LSP | solc | nomicfoundation | juanfranblanco | qiuxiang |
-|---------|---------|------|-----------------|----------------|----------|
+| Feature | mmsaki | solc | nomicfoundation | juanfranblanco | qiuxiang |
+|---------|--------|------|-----------------|----------------|----------|
 | Spawn + Init | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Diagnostics | ✅ | ✅ | ⏳ | ❌ | ⏳ |
 | Go to Definition | ✅ | ❌ | ⏳ | ❌ | ⏳ |
@@ -69,16 +71,16 @@ Benchmarks comparing Solidity LSP servers against Uniswap V4-core (`Pool.sol`, 6
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **Our LSP** | ✅ ok | 4.4ms | 4.3ms | 5.1ms |
-| **solc** | ✅ ok | 114.7ms | 114.8ms | 116.1ms |
-| **nomicfoundation** | ✅ ok | 872.4ms | 863.7ms | 951.5ms |
-| **juanfranblanco** | ✅ ok | 509.3ms | 511.1ms | 512.6ms |
-| **qiuxiang** | ✅ ok | 68.3ms | 68.3ms | 69.6ms |
+| **mmsaki** | ✅ ok | 3.9ms | 3.8ms | 4.8ms |
+| **solc** | ✅ ok | 112.3ms | 112.3ms | 114.0ms |
+| **nomicfoundation** | ✅ ok | 865.6ms | 866.2ms | 891.3ms |
+| **juanfranblanco** | ✅ ok | 518.6ms | 520.0ms | 521.9ms |
+| **qiuxiang** | ✅ ok | 70.2ms | 70.4ms | 71.7ms |
 
 <details>
 <summary>Response details</summary>
 
-**Our LSP**
+**mmsaki**
 
 ```json
 "ok"
@@ -114,8 +116,8 @@ Benchmarks comparing Solidity LSP servers against Uniswap V4-core (`Pool.sol`, 6
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **Our LSP** | ✅ ok | 439.7ms | 439.7ms | 444.4ms |
-| **solc** | ✅ ok | 132.8ms | 133.0ms | 134.0ms |
+| **mmsaki** | ✅ ok | 445.1ms | 443.7ms | 457.4ms |
+| **solc** | ✅ ok | 135.4ms | 135.4ms | 137.1ms |
 | **nomicfoundation** | ❌ timeout | - | - | - |
 | **juanfranblanco** | ❌ EOF | - | - | - |
 | **qiuxiang** | ❌ timeout | - | - | - |
@@ -123,14 +125,17 @@ Benchmarks comparing Solidity LSP servers against Uniswap V4-core (`Pool.sol`, 6
 <details>
 <summary>Response details</summary>
 
-**Our LSP**
+**mmsaki**
 
 ```json
 {
   "diagnostics": [
     {
       "code": "mixed-case-function",
-      "message":...
+      "message": "[forge lint] function names should use mixedCase",
+      "range": {
+        "end": {
+          "character": 21,...
 ```
 
 **solc**
@@ -139,8 +144,7 @@ Benchmarks comparing Solidity LSP servers against Uniswap V4-core (`Pool.sol`, 6
 {
   "diagnostics": [
     {
-      "code": 6275,
-      "message": "ParserError: So...
+      "code": 6275,...
 ```
 
 **nomicfoundation**
@@ -161,7 +165,7 @@ Error: `timeout`
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **Our LSP** | ✅ ok | 8.5ms | 8.4ms | 9.2ms |
+| **mmsaki** | ✅ ok | 8.6ms | 8.5ms | 9.5ms |
 | **solc** | ⚠️ invalid | - | - | - |
 | **nomicfoundation** | ❌ wait_for_diagnostics: timeout | - | - | - |
 | **juanfranblanco** | ❌ wait_for_diagnostics: EOF | - | - | - |
@@ -170,7 +174,7 @@ Error: `timeout`
 <details>
 <summary>Response details</summary>
 
-**Our LSP**
+**mmsaki**
 
 ```json
 {
@@ -179,7 +183,11 @@ Error: `timeout`
       "character": 8,
       "line": 9
     },
-    "st...
+    "start": {
+      "character": 8,
+      "line": 9
+    }
+  },...
 ```
 
 **solc**
@@ -206,7 +214,7 @@ Error: `wait_for_diagnostics: timeout`
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **Our LSP** | ✅ ok | 8.5ms | 8.5ms | 8.9ms |
+| **mmsaki** | ✅ ok | 8.7ms | 8.7ms | 9.4ms |
 | **solc** | ⚠️ invalid | - | - | - |
 | **nomicfoundation** | ❌ wait_for_diagnostics: timeout | - | - | - |
 | **juanfranblanco** | ❌ wait_for_diagnostics: EOF | - | - | - |
@@ -215,7 +223,7 @@ Error: `wait_for_diagnostics: timeout`
 <details>
 <summary>Response details</summary>
 
-**Our LSP**
+**mmsaki**
 
 ```json
 {
@@ -224,7 +232,11 @@ Error: `wait_for_diagnostics: timeout`
       "character": 8,
       "line": 9
     },
-    "st...
+    "start": {
+      "character": 8,
+      "line": 9
+    }
+  },...
 ```
 
 **solc**
@@ -251,7 +263,7 @@ Error: `wait_for_diagnostics: timeout`
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **Our LSP** | ✅ ok | 14.3ms | 14.0ms | 16.7ms |
+| **mmsaki** | ✅ ok | 13.6ms | 13.6ms | 14.1ms |
 | **solc** | ⚠️ invalid | - | - | - |
 | **nomicfoundation** | ❌ wait_for_diagnostics: timeout | - | - | - |
 | **juanfranblanco** | ❌ wait_for_diagnostics: EOF | - | - | - |
@@ -260,13 +272,12 @@ Error: `wait_for_diagnostics: timeout`
 <details>
 <summary>Response details</summary>
 
-**Our LSP**
+**mmsaki**
 
 ```json
 {
   "contents": {
-    "kind": "markdown",
-    "value": "```solidity\nlibrary Tic...
+    "kind": "markdown",...
 ```
 
 **solc**
@@ -293,7 +304,7 @@ Error: `wait_for_diagnostics: timeout`
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **Our LSP** | ✅ ok | 10.4ms | 10.5ms | 11.1ms |
+| **mmsaki** | ✅ ok | 10.4ms | 10.2ms | 11.2ms |
 | **solc** | ⚠️ invalid | - | - | - |
 | **nomicfoundation** | ❌ wait_for_diagnostics: timeout | - | - | - |
 | **juanfranblanco** | ❌ wait_for_diagnostics: EOF | - | - | - |
@@ -302,15 +313,21 @@ Error: `wait_for_diagnostics: timeout`
 <details>
 <summary>Response details</summary>
 
-**Our LSP**
+**mmsaki**
 
 ```json
 [
   {
     "range": {
       "end": {
-        "character": 32,
-        "line": 213...
+        "character": 33,
+        "line": 572
+      },
+      "start": {
+        "character": 25,
+        "line": 572
+      }
+    },...
 ```
 
 **solc**
@@ -337,7 +354,7 @@ Error: `wait_for_diagnostics: timeout`
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **Our LSP** | ✅ ok | 8.6ms | 8.6ms | 8.9ms |
+| **mmsaki** | ✅ ok | 8.4ms | 8.4ms | 8.8ms |
 | **solc** | ⚠️ invalid | - | - | - |
 | **nomicfoundation** | ❌ wait_for_diagnostics: timeout | - | - | - |
 | **juanfranblanco** | ❌ wait_for_diagnostics: EOF | - | - | - |
@@ -346,7 +363,7 @@ Error: `wait_for_diagnostics: timeout`
 <details>
 <summary>Response details</summary>
 
-**Our LSP**
+**mmsaki**
 
 ```json
 [
@@ -354,7 +371,13 @@ Error: `wait_for_diagnostics: timeout`
     "kind": 15,
     "name": "solidity ^0.8.0",
     "range": {
-      "end":...
+      "end": {
+        "character": 23,
+        "line": 1
+      },
+      "start": {
+        "character": 0,
+        "line": 1...
 ```
 
 **solc**
@@ -381,7 +404,7 @@ Error: `wait_for_diagnostics: timeout`
 
 | Server | Status | Mean | P50 | P95 |
 |--------|--------|------|-----|-----|
-| **Our LSP** | ✅ ok | 62.7ms | 62.8ms | 63.8ms |
+| **mmsaki** | ✅ ok | 64.1ms | 64.3ms | 65.0ms |
 | **solc** | ⚠️ invalid | - | - | - |
 | **nomicfoundation** | ❌ wait_for_diagnostics: timeout | - | - | - |
 | **juanfranblanco** | ❌ wait_for_diagnostics: EOF | - | - | - |
@@ -390,7 +413,7 @@ Error: `wait_for_diagnostics: timeout`
 <details>
 <summary>Response details</summary>
 
-**Our LSP**
+**mmsaki**
 
 ```json
 [
@@ -399,7 +422,12 @@ Error: `wait_for_diagnostics: timeout`
       "end": {
         "character": 16,
         "line": 3
- ...
+      },
+      "start": {
+        "character": 8,
+        "line": 3
+      }
+    },...
 ```
 
 **solc**
@@ -424,6 +452,6 @@ Error: `wait_for_diagnostics: timeout`
 
 ---
 
-*Generated from [`benchmarks/2026-02-13T03-53-07Z.json`](benchmarks/2026-02-13T03-53-07Z.json) — benchmark run: 2026-02-13T03:53:07Z*
+*Generated from [`benchmarks/2026-02-13T04-17-56Z.json`](benchmarks/2026-02-13T04-17-56Z.json) — benchmark run: 2026-02-13T04:17:56Z*
 
 See [DOCS.md](./DOCS.md) for usage and installation.

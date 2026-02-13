@@ -1,11 +1,75 @@
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
+
+// ── Config ──────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Deserialize, Serialize)]
+struct Config {
+    project: String,
+    file: String,
+    #[serde(default = "default_line")]
+    line: u32,
+    #[serde(default = "default_col")]
+    col: u32,
+    #[serde(default = "default_iterations")]
+    iterations: usize,
+    #[serde(default = "default_warmup")]
+    warmup: usize,
+    #[serde(default = "default_timeout")]
+    timeout: u64,
+    #[serde(default = "default_index_timeout")]
+    index_timeout: u64,
+    servers: Vec<ServerConfig>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct ServerConfig {
+    label: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    link: String,
+    cmd: String,
+    #[serde(default)]
+    args: Vec<String>,
+}
+
+fn default_line() -> u32 {
+    102
+}
+fn default_col() -> u32 {
+    15
+}
+fn default_iterations() -> usize {
+    10
+}
+fn default_warmup() -> usize {
+    2
+}
+fn default_timeout() -> u64 {
+    10
+}
+fn default_index_timeout() -> u64 {
+    15
+}
+
+fn load_config(path: &str) -> Config {
+    let content = std::fs::read_to_string(path).unwrap_or_else(|e| {
+        eprintln!("Error reading config {}: {}", path, e);
+        std::process::exit(1);
+    });
+    serde_yaml::from_str(&content).unwrap_or_else(|e| {
+        eprintln!("Error parsing config {}: {}", path, e);
+        std::process::exit(1);
+    })
+}
 
 fn timestamp() -> String {
     let output = Command::new("date")
@@ -88,7 +152,7 @@ fn reader_thread(stdout: std::process::ChildStdout, tx: mpsc::Sender<Value>) {
 }
 
 impl LspClient {
-    fn spawn(cmd: &str, args: &[&str], cwd: &Path) -> Result<Self, String> {
+    fn spawn(cmd: &str, args: &[String], cwd: &Path) -> Result<Self, String> {
         let abs_cmd = if cmd.starts_with("..") || cmd.starts_with("./") {
             std::fs::canonicalize(cmd)
                 .map(|p| p.to_string_lossy().to_string())
@@ -435,41 +499,9 @@ fn response_summary(resp: &Value, max_chars: usize) -> String {
     }
 }
 
-// ── Servers ─────────────────────────────────────────────────────────────────
+// ── Servers (alias for config) ──────────────────────────────────────────────
 
-struct Server {
-    label: &'static str,
-    cmd: &'static str,
-    args: &'static [&'static str],
-}
-
-const SERVERS: &[Server] = &[
-    Server {
-        label: "mmsaki",
-        cmd: "solidity-language-server",
-        args: &[],
-    },
-    Server {
-        label: "solc",
-        cmd: "solc",
-        args: &["--lsp"],
-    },
-    Server {
-        label: "nomicfoundation",
-        cmd: "nomicfoundation-solidity-language-server",
-        args: &["--stdio"],
-    },
-    Server {
-        label: "juanfranblanco",
-        cmd: "vscode-solidity-server",
-        args: &["--stdio"],
-    },
-    Server {
-        label: "qiuxiang",
-        cmd: "solidity-ls",
-        args: &["--stdio"],
-    },
-];
+type Server = ServerConfig;
 
 // ── Bench result per server ─────────────────────────────────────────────────
 
@@ -570,7 +602,7 @@ fn bench_spawn(
     for i in 0..(w + n) {
         on_progress(&iter_msg(i, w, n));
         let start = Instant::now();
-        let mut c = match LspClient::spawn(srv.cmd, srv.args, cwd) {
+        let mut c = match LspClient::spawn(&srv.cmd, &srv.args, cwd) {
             Ok(c) => c,
             Err(e) => return BenchResult::Fail(e),
         };
@@ -605,7 +637,7 @@ fn bench_diagnostics(
     let mut first: Option<DiagnosticsInfo> = None;
     for i in 0..(w + n) {
         on_progress(&format!("{}  waiting for diagnostics", iter_msg(i, w, n)));
-        let mut c = match LspClient::spawn(srv.cmd, srv.args, cwd) {
+        let mut c = match LspClient::spawn(&srv.cmd, &srv.args, cwd) {
             Ok(c) => c,
             Err(e) => return BenchResult::Fail(e),
         };
@@ -656,7 +688,7 @@ fn bench_lsp_method(
     on_progress: &dyn Fn(&str),
 ) -> BenchResult {
     on_progress("spawning");
-    let mut c = match LspClient::spawn(srv.cmd, srv.args, cwd) {
+    let mut c = match LspClient::spawn(&srv.cmd, &srv.args, cwd) {
         Ok(c) => c,
         Err(e) => return BenchResult::Fail(e),
     };
@@ -714,7 +746,7 @@ where
 {
     let mut rows = Vec::new();
     for srv in servers {
-        let pb = spinner(srv.label);
+        let pb = spinner(&srv.label);
         let on_progress = |msg: &str| pb.set_message(msg.to_string());
         match f(srv, &on_progress) {
             BenchResult::Ok {
@@ -769,6 +801,7 @@ where
 fn save_json(
     results: &[(&str, Vec<BenchRow>)],
     versions: &[(&str, String)],
+    servers: &[&ServerConfig],
     n: usize,
     w: usize,
     timeout: &Duration,
@@ -791,7 +824,18 @@ fn save_json(
         .collect();
     let json_servers: Vec<Value> = versions
         .iter()
-        .map(|(label, ver)| json!({"name": label, "version": ver}))
+        .map(|(label, ver)| {
+            let mut obj = json!({"name": label, "version": ver});
+            if let Some(srv) = servers.iter().find(|s| s.label == *label) {
+                if !srv.description.is_empty() {
+                    obj["description"] = json!(srv.description);
+                }
+                if !srv.link.is_empty() {
+                    obj["link"] = json!(srv.link);
+                }
+            }
+            obj
+        })
         .collect();
     let output = json!({
         "timestamp": ts,
@@ -832,59 +876,91 @@ fn print_usage() {
     eprintln!("Usage: bench [OPTIONS] <COMMAND>");
     eprintln!();
     eprintln!("Commands:");
-    eprintln!("  all            -- run all benchmarks");
-    eprintln!("  spawn          -- spawn + initialize handshake");
-    eprintln!("  diagnostics    -- open Pool.sol, time to first diagnostic");
-    eprintln!("  definition     -- go-to-definition on TickMath in Pool.sol");
-    eprintln!("  declaration    -- go-to-declaration on TickMath in Pool.sol");
-    eprintln!("  hover          -- hover on TickMath in Pool.sol");
-    eprintln!("  references     -- find references on TickMath in Pool.sol");
-    eprintln!("  documentSymbol -- get document symbols for Pool.sol");
-    eprintln!("  documentLink   -- get document links for Pool.sol");
+    eprintln!("  init                  Generate benchmark.yaml template");
+    eprintln!("  all, spawn, diagnostics, definition, declaration,");
+    eprintln!("  hover, references, documentSymbol, documentLink");
     eprintln!();
     eprintln!("Options:");
-    eprintln!("  -n, --iterations <N>         Number of measured iterations (default: 10)");
-    eprintln!("  -w, --warmup <N>             Number of warmup iterations (default: 2)");
-    eprintln!("  -t, --timeout <SECS>         Timeout per request in seconds (default: 10)");
-    eprintln!("  -T, --index-timeout <SECS>   Time for server to index/warm up (default: 15)");
-    eprintln!("  -s, --server <NAME>          Only run against this server (can repeat)");
-    eprintln!(
-        "  -f, --file <PATH>            Solidity file to benchmark (relative to project root)"
-    );
-    eprintln!(
-        "  --line <N>                   Target line for position-based benchmarks (default: 102)"
-    );
-    eprintln!(
-        "  --col <N>                    Target column for position-based benchmarks (default: 15)"
-    );
-    eprintln!("  -h, --help                   Show this help message");
+    eprintln!("  -c, --config <PATH>   Config file (default: benchmark.yaml)");
+    eprintln!("  -s, --server <NAME>   Filter servers (repeatable)");
+    eprintln!("  -h, --help            Show this help");
     eprintln!();
-    eprintln!("Servers:");
-    for srv in SERVERS {
-        eprintln!("  {}", srv.label);
+    eprintln!("All settings (iterations, timeouts, servers, file, position)");
+    eprintln!("are configured in benchmark.yaml. See DOCS.md for details.");
+}
+
+const EXAMPLE_CONFIG: &str = r#"# Solidity LSP Benchmark Configuration
+# See DOCS.md for details on all fields
+
+# Project root containing the Solidity files
+project: examples
+
+# Target file to benchmark (relative to project root)
+file: Counter.sol
+
+# Target position for position-based benchmarks (0-based)
+# These use LSP protocol indexing, so subtract 1 from your editor's
+# line and column numbers. For example, editor line 22 col 9 -> line: 21, col: 8
+#
+#   line 22 (editor):       number = newNumber;
+#   col   9 (editor):       ^
+#
+# The position should land on an identifier (variable, function, type)
+# that LSP methods can act on (definition, hover, references, etc.)
+line: 21
+col: 8
+
+# Benchmark settings
+iterations: 10    # number of measured iterations
+warmup: 2         # warmup iterations (discarded)
+timeout: 10       # seconds per LSP request
+index_timeout: 15 # seconds for server to index/warm up
+
+# LSP servers to benchmark
+servers:
+  - label: my-server
+    description: My Solidity Language Server
+    link: https://github.com/example/my-server
+    cmd: my-solidity-lsp
+    args: []
+
+  # - label: solc
+  #   description: Official Solidity compiler LSP
+  #   link: https://docs.soliditylang.org
+  #   cmd: solc
+  #   args: ["--lsp"]
+"#;
+
+fn init_config(path: &str) {
+    if Path::new(path).exists() {
+        eprintln!("{} already exists", path);
+        std::process::exit(1);
     }
+    std::fs::write(path, EXAMPLE_CONFIG).unwrap_or_else(|e| {
+        eprintln!("Error writing {}: {}", path, e);
+        std::process::exit(1);
+    });
+    eprintln!("Created {}", path);
     eprintln!();
-    eprintln!("Examples:");
-    eprintln!("  bench all                          Run all benchmarks, all servers");
-    eprintln!("  bench all -s solc                  Run all benchmarks, only solc");
-    eprintln!("  bench diagnostics -s nomic -s solc Diagnostics for two servers");
-    eprintln!("  bench hover -n 1 -w 0              Single hover iteration, no warmup");
-    eprintln!("  bench all -f src/PoolManager.sol   Benchmark a different file");
-    eprintln!("  bench definition --line 50 --col 8 Target a specific position");
+    eprintln!("Edit the file to configure your servers, then run:");
+    eprintln!("  bench all");
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    let mut n: usize = 10;
-    let mut w: usize = 2;
-    let mut timeout_secs: u64 = 10;
-    let mut index_timeout_secs: u64 = 15;
+    let mut config_path = "benchmark.yaml".to_string();
     let mut commands: Vec<String> = Vec::new();
     let mut server_filter: Vec<String> = Vec::new();
-    let mut bench_file: Option<String> = None;
-    let mut target_line: u32 = 102;
-    let mut target_col: u32 = 15;
+
+    // CLI overrides (None = use config value)
+    let mut cli_n: Option<usize> = None;
+    let mut cli_w: Option<usize> = None;
+    let mut cli_timeout: Option<u64> = None;
+    let mut cli_index_timeout: Option<u64> = None;
+    let mut cli_file: Option<String> = None;
+    let mut cli_line: Option<u32> = None;
+    let mut cli_col: Option<u32> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -893,34 +969,44 @@ fn main() {
                 print_usage();
                 std::process::exit(0);
             }
+            "-c" | "--config" => {
+                i += 1;
+                config_path = args
+                    .get(i)
+                    .unwrap_or_else(|| {
+                        eprintln!("Error: -c requires a path");
+                        std::process::exit(1);
+                    })
+                    .clone();
+            }
             "-n" | "--iterations" => {
                 i += 1;
-                n = args.get(i).and_then(|v| v.parse().ok()).unwrap_or_else(|| {
+                cli_n = Some(args.get(i).and_then(|v| v.parse().ok()).unwrap_or_else(|| {
                     eprintln!("Error: -n requires a number");
                     std::process::exit(1);
-                });
+                }));
             }
             "-w" | "--warmup" => {
                 i += 1;
-                w = args.get(i).and_then(|v| v.parse().ok()).unwrap_or_else(|| {
+                cli_w = Some(args.get(i).and_then(|v| v.parse().ok()).unwrap_or_else(|| {
                     eprintln!("Error: -w requires a number");
                     std::process::exit(1);
-                });
+                }));
             }
             "-t" | "--timeout" => {
                 i += 1;
-                timeout_secs = args.get(i).and_then(|v| v.parse().ok()).unwrap_or_else(|| {
+                cli_timeout = Some(args.get(i).and_then(|v| v.parse().ok()).unwrap_or_else(|| {
                     eprintln!("Error: -t requires a number (seconds)");
                     std::process::exit(1);
-                });
+                }));
             }
             "-T" | "--index-timeout" => {
                 i += 1;
-                index_timeout_secs =
-                    args.get(i).and_then(|v| v.parse().ok()).unwrap_or_else(|| {
+                cli_index_timeout =
+                    Some(args.get(i).and_then(|v| v.parse().ok()).unwrap_or_else(|| {
                         eprintln!("Error: -T requires a number (seconds)");
                         std::process::exit(1);
-                    });
+                    }));
             }
             "-s" | "--server" => {
                 i += 1;
@@ -932,7 +1018,7 @@ fn main() {
             }
             "-f" | "--file" => {
                 i += 1;
-                bench_file = Some(
+                cli_file = Some(
                     args.get(i)
                         .unwrap_or_else(|| {
                             eprintln!("Error: -f requires a file path");
@@ -943,25 +1029,59 @@ fn main() {
             }
             "--line" => {
                 i += 1;
-                target_line = args.get(i).and_then(|v| v.parse().ok()).unwrap_or_else(|| {
+                cli_line = Some(args.get(i).and_then(|v| v.parse().ok()).unwrap_or_else(|| {
                     eprintln!("Error: --line requires a number");
                     std::process::exit(1);
-                });
+                }));
             }
             "--col" => {
                 i += 1;
-                target_col = args.get(i).and_then(|v| v.parse().ok()).unwrap_or_else(|| {
+                cli_col = Some(args.get(i).and_then(|v| v.parse().ok()).unwrap_or_else(|| {
                     eprintln!("Error: --col requires a number");
                     std::process::exit(1);
-                });
+                }));
             }
             other => commands.push(other.to_string()),
         }
         i += 1;
     }
 
-    let timeout = Duration::from_secs(timeout_secs);
-    let index_timeout = Duration::from_secs(index_timeout_secs);
+    // Handle init before loading config
+    if commands.iter().any(|c| c == "init") {
+        init_config(&config_path);
+        std::process::exit(0);
+    }
+
+    // Load config, apply CLI overrides
+    let mut cfg = load_config(&config_path);
+    if let Some(v) = cli_n {
+        cfg.iterations = v;
+    }
+    if let Some(v) = cli_w {
+        cfg.warmup = v;
+    }
+    if let Some(v) = cli_timeout {
+        cfg.timeout = v;
+    }
+    if let Some(v) = cli_index_timeout {
+        cfg.index_timeout = v;
+    }
+    if let Some(v) = cli_file {
+        cfg.file = v;
+    }
+    if let Some(v) = cli_line {
+        cfg.line = v;
+    }
+    if let Some(v) = cli_col {
+        cfg.col = v;
+    }
+
+    let n = cfg.iterations;
+    let w = cfg.warmup;
+    let timeout = Duration::from_secs(cfg.timeout);
+    let index_timeout = Duration::from_secs(cfg.index_timeout);
+    let target_line = cfg.line;
+    let target_col = cfg.col;
 
     if commands.is_empty() {
         print_usage();
@@ -982,22 +1102,20 @@ fn main() {
         }
     }
 
-    let v4 = ["bench/v4-core", "v4-core"]
-        .iter()
-        .find(|p| Path::new(p).join("src/PoolManager.sol").exists())
-        .unwrap_or_else(|| {
-            eprintln!("v4-core not found");
-            std::process::exit(1);
-        });
-    let cwd = Path::new(v4);
-    let root = uri(cwd);
-    let default_file = "src/libraries/Pool.sol";
-    let bench_file_rel = bench_file.as_deref().unwrap_or(default_file);
+    let cwd = PathBuf::from(&cfg.project);
+    if !cwd.exists() {
+        eprintln!("Error: project directory not found: {}", cfg.project);
+        std::process::exit(1);
+    }
+    let root = uri(&cwd);
+    let bench_file_rel = &cfg.file;
     let bench_sol = cwd.join(bench_file_rel);
     if !bench_sol.exists() {
         eprintln!("Error: benchmark file not found: {}", bench_sol.display());
         std::process::exit(1);
     }
+
+    eprintln!("  {} {}", style("config").dim(), config_path);
     eprintln!(
         "  {} {}  (line {}, col {})",
         style("file").dim(),
@@ -1006,7 +1124,8 @@ fn main() {
         target_col
     );
 
-    let avail: Vec<&Server> = SERVERS
+    let avail: Vec<&Server> = cfg
+        .servers
         .iter()
         .filter(|s| {
             if !server_filter.is_empty()
@@ -1016,7 +1135,7 @@ fn main() {
             {
                 return false;
             }
-            let ok = available(s.cmd);
+            let ok = available(&s.cmd);
             if !ok {
                 eprintln!("  {} {} -- not found", style("skip").yellow(), s.label);
             }
@@ -1028,9 +1147,9 @@ fn main() {
     let versions: Vec<(&str, String)> = avail
         .iter()
         .map(|s| {
-            let ver = detect_version(s.cmd);
-            eprintln!("  {} = {}", style(s.label).bold(), ver);
-            (s.label, ver)
+            let ver = detect_version(&s.cmd);
+            eprintln!("  {} = {}", style(&s.label).bold(), ver);
+            (s.label.as_str(), ver)
         })
         .collect();
 
@@ -1098,12 +1217,13 @@ fn main() {
             style(format!("[{}/{}] Spawn + Init", num, total)).bold()
         );
         let rows = run_bench(&avail, |srv, on_progress| {
-            bench_spawn(srv, &root, cwd, w, n, on_progress)
+            bench_spawn(srv, &root, &cwd, w, n, on_progress)
         });
         all_results.push(("Spawn + Init", rows));
         let p = save_json(
             &all_results,
             &versions,
+            &avail,
             n,
             w,
             &timeout,
@@ -1128,7 +1248,7 @@ fn main() {
             bench_diagnostics(
                 srv,
                 &root,
-                cwd,
+                &cwd,
                 &bench_sol,
                 index_timeout,
                 w,
@@ -1140,6 +1260,7 @@ fn main() {
         let p = save_json(
             &all_results,
             &versions,
+            &avail,
             n,
             w,
             &timeout,
@@ -1165,7 +1286,7 @@ fn main() {
                 bench_lsp_method(
                     srv,
                     &root,
-                    cwd,
+                    &cwd,
                     &bench_sol,
                     method,
                     *params_fn,
@@ -1180,6 +1301,7 @@ fn main() {
             let p = save_json(
                 &all_results,
                 &versions,
+                &avail,
                 n,
                 w,
                 &timeout,
@@ -1207,6 +1329,7 @@ fn main() {
         let path = save_json(
             &all_results,
             &versions,
+            &avail,
             n,
             w,
             &timeout,

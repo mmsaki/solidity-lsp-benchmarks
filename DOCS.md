@@ -24,66 +24,239 @@ cargo build --release
 ./target/release/bench [OPTIONS] <COMMAND>
 ```
 
+## Configuration
+
+Benchmarks are configured via a YAML file. By default, `bench` looks for `benchmark.yaml` in the current directory. Use `-c` to point to a different config.
+
+### Writing a config
+
+Create a `benchmark.yaml` (or any `.yaml` file) with the following structure:
+
+```yaml
+# Project root containing the Solidity files
+project: v4-core
+
+# Target file to benchmark (relative to project root)
+file: src/libraries/Pool.sol
+
+# Target position for position-based benchmarks (definition, hover, etc.)
+line: 102
+col: 15
+
+# Benchmark settings
+iterations: 10
+warmup: 2
+timeout: 10        # seconds per request
+index_timeout: 15  # seconds for server to index/warm up
+
+# LSP servers to benchmark
+servers:
+  - label: mmsaki
+    description: Solidity Language Server by mmsaki
+    link: https://github.com/mmsaki/solidity-language-server
+    cmd: solidity-language-server
+    args: []
+
+  - label: solc
+    description: Official Solidity compiler LSP
+    link: https://docs.soliditylang.org
+    cmd: solc
+    args: ["--lsp"]
+```
+
+### Config fields
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `project` | yes | — | Path to the project root (e.g. a git submodule) |
+| `file` | yes | — | Solidity file to benchmark, relative to `project` |
+| `line` | no | 102 | Target line for position-based benchmarks (0-based) |
+| `col` | no | 15 | Target column for position-based benchmarks (0-based) |
+| `iterations` | no | 10 | Number of measured iterations per benchmark |
+| `warmup` | no | 2 | Number of warmup iterations (discarded) |
+| `timeout` | no | 10 | Timeout per LSP request in seconds |
+| `index_timeout` | no | 15 | Time for server to index/warm up in seconds |
+| `servers` | yes | — | List of LSP servers to benchmark |
+
+### Target position (line and col)
+
+`line` and `col` use **0-based indexing**, matching the [LSP specification](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#position). This means they are offset by 1 from what your editor displays:
+
+| Config value | Editor display |
+|--------------|----------------|
+| `line: 0` | line 1 |
+| `line: 102` | line 103 |
+| `col: 0` | column 1 |
+| `col: 15` | column 16 |
+
+To find the right values, open the file in your editor, place the cursor on the identifier you want to benchmark, and subtract 1 from both the line and column numbers.
+
+For example, targeting `number` inside `setNumber` in Counter.sol:
+
+```
+line 22 (editor):       number = newNumber;
+col   9 (editor):       ^
+```
+
+In the config, this becomes `line: 21`, `col: 8`.
+
+Another example — targeting `TickMath` in Pool.sol:
+
+```
+line 103 (editor):  tick = TickMath.getTickAtSqrtPrice(sqrtPriceX96);
+col  16 (editor):          ^
+```
+
+In the config: `line: 102`, `col: 15`.
+
+The position should land on an identifier that LSP methods can act on — a type name, function call, variable, etc. This is used by `definition`, `declaration`, `hover`, and `references` benchmarks. The `spawn`, `diagnostics`, `documentSymbol`, and `documentLink` benchmarks ignore the position.
+
+### Server fields
+
+| Field | Required | Default | Description |
+|-------|----------|---------|-------------|
+| `label` | yes | — | Short name shown in results (e.g. `solc`) |
+| `description` | no | `""` | Longer description for the README |
+| `link` | no | `""` | URL to the server's project page |
+| `cmd` | yes | — | Command to spawn the server |
+| `args` | no | `[]` | Command-line arguments passed to `cmd` |
+
+### Example configs
+
+**Minimal** — benchmark a single server against the included Counter.sol:
+
+```yaml
+project: examples
+file: Counter.sol
+line: 21   # "number" in setNumber (editor line 22, col 9)
+col: 8
+servers:
+  - label: solc
+    cmd: solc
+    args: ["--lsp"]
+```
+
+**Quick iteration** — fast feedback during development:
+
+```yaml
+project: examples
+file: Counter.sol
+line: 21
+col: 8
+iterations: 1
+warmup: 0
+timeout: 5
+index_timeout: 10
+servers:
+  - label: mmsaki
+    cmd: solidity-language-server
+```
+
+**Larger project** — benchmark against Uniswap V4-core:
+
+```yaml
+project: v4-core
+file: src/libraries/Pool.sol
+line: 102  # "TickMath" (editor line 103, col 16)
+col: 15
+iterations: 10
+warmup: 2
+servers:
+  - label: mmsaki
+    cmd: solidity-language-server
+  - label: solc
+    cmd: solc
+    args: ["--lsp"]
+```
+
+**Long timeouts** — for slow servers that need more indexing time:
+
+```yaml
+project: v4-core
+file: src/libraries/Pool.sol
+line: 102
+col: 15
+timeout: 30
+index_timeout: 60
+servers:
+  - label: nomicfoundation
+    description: Hardhat/Nomic Foundation Solidity Language Server
+    link: https://github.com/NomicFoundation/hardhat-vscode
+    cmd: nomicfoundation-solidity-language-server
+    args: ["--stdio"]
+```
+
+### Using a config
+
+```sh
+bench all                        # uses benchmark.yaml in current directory
+bench all -c pool.yaml           # uses a different config file
+bench all -c configs/fast.yaml   # config can be in any path
+```
+
+### CLI overrides
+
+Any config value can be overridden from the command line. CLI flags take precedence over the config file.
+
+| Flag | Overrides |
+|------|-----------|
+| `-c, --config <PATH>` | Config file path (default: `benchmark.yaml`) |
+| `-n, --iterations <N>` | `iterations` |
+| `-w, --warmup <N>` | `warmup` |
+| `-t, --timeout <SECS>` | `timeout` |
+| `-T, --index-timeout <SECS>` | `index_timeout` |
+| `-s, --server <NAME>` | Filters `servers` list (substring match, repeatable) |
+| `-f, --file <PATH>` | `file` |
+| `--line <N>` | `line` |
+| `--col <N>` | `col` |
+
+```sh
+bench all -n 1 -w 0             # override iterations/warmup from config
+bench all -s solc -s mmsaki      # only run solc and mmsaki from config
+bench all -T 30                  # give servers 30s to index (overrides config)
+bench hover -f src/PoolManager.sol --line 50 --col 8  # override file/position
+```
+
 ### Commands
 
 | Command | Description |
 |---------|-------------|
 | `all` | Run all benchmarks |
 | `spawn` | Spawn + initialize handshake |
-| `diagnostics` | Open Pool.sol, time to first diagnostic |
-| `definition` | Go-to-definition on TickMath in Pool.sol |
-| `declaration` | Go-to-declaration on TickMath in Pool.sol |
-| `hover` | Hover on TickMath in Pool.sol |
-| `references` | Find references on TickMath in Pool.sol |
-| `documentSymbol` | Get document symbols for Pool.sol |
-| `documentLink` | Get document links for Pool.sol |
-
-### Options
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `-n, --iterations` | 10 | Number of measured iterations |
-| `-w, --warmup` | 2 | Number of warmup iterations (discarded) |
-| `-t, --timeout` | 10 | Timeout per request in seconds |
-| `-T, --index-timeout` | 15 | Time for server to index/warm up in seconds |
-| `-s, --server` | all | Only run against this server (can repeat, substring match) |
-| `-f, --file` | `src/libraries/Pool.sol` | Solidity file to benchmark (relative to project root) |
-| `--line` | 102 | Target line for position-based benchmarks |
-| `--col` | 15 | Target column for position-based benchmarks |
-| `-h, --help` | | Show help message |
+| `diagnostics` | Open file, time to first diagnostic |
+| `definition` | Go-to-definition at target position |
+| `declaration` | Go-to-declaration at target position |
+| `hover` | Hover at target position |
+| `references` | Find references at target position |
+| `documentSymbol` | Get document symbols |
+| `documentLink` | Get document links |
 
 ### Examples
 
 ```sh
-bench all                              # Run all benchmarks, all servers
-bench all -n 1 -w 0                   # Run all benchmarks once, no warmup
-bench diagnostics -n 5                 # Run diagnostics with 5 iterations
-bench spawn definition                 # Run specific benchmarks
-bench all -T 30                        # Give servers 30s to index
-bench all -t 5 -T 20                  # 20s to index, 5s per request
-bench all -s solc                      # Run all benchmarks, only solc
-bench diagnostics -s nomic -s solc     # Diagnostics for two servers
-bench hover -s mmsaki -n 1 -w 0       # Single hover, only mmsaki
-bench all -f src/PoolManager.sol       # Benchmark a different file
-bench definition --line 50 --col 8     # Target a specific position
+bench all                              # all benchmarks, all servers from config
+bench spawn definition                 # run specific benchmarks
+bench diagnostics -s nomic -s solc     # filter to two servers
+bench hover -s mmsaki -n 1 -w 0       # quick single test
+bench all -c configs/poolmanager.yaml  # use a custom config
 ```
 
 ## Methodology
 
 ### How benchmarks work
 
-Each benchmark sends real LSP requests over JSON-RPC (stdio) and measures wall-clock response time. Every request includes an `id`, and the tool waits for the server to return a response with that same `id` before recording the time and moving on. Requests are **sequential** — the next iteration only starts after the previous one completes (or times out).
+Each benchmark sends real LSP requests over JSON-RPC (stdio) and measures wall-clock response time. Every request includes an `id`, and the tool waits for the server to return a response with that same `id` before recording the time and moving on. Requests are **sequential** -- the next iteration only starts after the previous one completes (or times out).
 
 ### Two timeouts
 
 There are two separate timeouts that serve different purposes:
 
-- **Index timeout** (`-T`, default 15s): How long the server gets to index the project after opening a file. This is the "warm up" phase where the server analyzes the codebase, builds its AST, resolves imports, etc. This only applies to the diagnostics wait step.
-- **Request timeout** (`-t`, default 10s): How long each individual LSP method call (definition, hover, etc.) gets to respond. Once a server has finished indexing, this is the budget for each request.
+- **Index timeout** (`index_timeout`, default 15s): How long the server gets to index the project after opening a file. This is the "warm up" phase where the server analyzes the codebase, builds its AST, resolves imports, etc. This only applies to the diagnostics wait step.
+- **Request timeout** (`timeout`, default 10s): How long each individual LSP method call (definition, hover, etc.) gets to respond. Once a server has finished indexing, this is the budget for each request.
 
 ### Warmup iterations
 
-Warmup iterations (`-w`, default 2) run the exact same benchmark but **discard the timing results**. This eliminates one-time costs from the measurements:
+Warmup iterations (`warmup`, default 2) run the exact same benchmark but **discard the timing results**. This eliminates one-time costs from the measurements:
 
 - **JIT compilation**: Node.js-based servers (nomicfoundation, juanfranblanco, qiuxiang) use V8, which interprets code on first run and optimizes hot paths later. The first 1-2 calls may be slower.
 - **Internal caches**: Some servers cache symbol tables or analysis results after the first request.
@@ -91,15 +264,15 @@ Warmup iterations (`-w`, default 2) run the exact same benchmark but **discard t
 
 For `spawn` and `diagnostics` benchmarks, a fresh server is started for every iteration, so warmup has less effect. For method benchmarks (definition, hover, etc.), the server stays alive across iterations, so warmup helps measure steady-state performance.
 
-Use `-w 0` if you want to measure real-world "first call" performance.
+Set `warmup: 0` in your config (or `-w 0` on the CLI) to measure real-world "first call" performance.
 
 ### Benchmark types
 
 **Spawn + Init**: Starts a fresh server process and performs the LSP initialize/initialized handshake. Measures cold-start time. A fresh server is spawned for every iteration.
 
-**Diagnostics**: Starts a fresh server, opens `Pool.sol` (618 lines from Uniswap V4), and waits for the server to publish diagnostics. Measures how long the server takes to analyze the file. Uses the index timeout (`-T`). A fresh server is spawned for every iteration.
+**Diagnostics**: Starts a fresh server, opens the target file, and waits for the server to publish diagnostics. Measures how long the server takes to analyze the file. Uses `index_timeout`. A fresh server is spawned for every iteration.
 
-**Method benchmarks** (definition, declaration, hover, references, documentSymbol, documentLink): Starts a single server, opens `Pool.sol`, waits for diagnostics (using the index timeout), then sends repeated LSP method requests. Only the method request time is measured — the indexing phase is not included in the timings.
+**Method benchmarks** (definition, declaration, hover, references, documentSymbol, documentLink): Starts a single server, opens the target file, waits for diagnostics (using `index_timeout`), then sends repeated LSP method requests at the target position (`line`/`col`). Only the method request time is measured -- the indexing phase is not included in the timings.
 
 ### Result statuses
 
@@ -134,11 +307,11 @@ After running benchmarks, generate the README from JSON data:
 
 `bench` produces JSON snapshots:
 
-- `benchmarks/<timestamp>.json` — full runs
-- `benchmarks/<names>/<timestamp>.json` — partial runs (e.g. `benchmarks/diagnostics/`)
+- `benchmarks/<timestamp>.json` -- full runs
+- `benchmarks/<names>/<timestamp>.json` -- partial runs (e.g. `benchmarks/diagnostics/`)
 
 `gen-readme` reads a JSON snapshot and writes `README.md` with:
-- Summary results table with medals (🥇🥈🥉) and trophy (🏆)
+- Summary results table with medals and trophy
 - Medal tally and overall winner
 - Feature support matrix
 - Detailed per-benchmark latency tables (mean/p50/p95)

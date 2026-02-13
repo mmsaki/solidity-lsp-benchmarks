@@ -122,12 +122,25 @@ fn generate_readme(data: &Value, json_path: &str) -> String {
     if let Some(servers) = data.get("servers").and_then(|s| s.as_array()) {
         l.push("## Servers".into());
         l.push(String::new());
-        l.push("| Server | Version |".into());
-        l.push("|--------|---------|".into());
+        l.push("| Server | Description | Version |".into());
+        l.push("|--------|-------------|---------|".into());
         for srv in servers {
             let name = srv.get("name").and_then(|n| n.as_str()).unwrap_or("?");
+            let link = srv.get("link").and_then(|v| v.as_str()).unwrap_or("");
+            let description = srv
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let version = srv.get("version").and_then(|v| v.as_str()).unwrap_or("?");
-            l.push(format!("| {} | `{}` |", name, version));
+            let name_cell = if link.is_empty() {
+                name.to_string()
+            } else {
+                format!("[{}]({})", name, link)
+            };
+            l.push(format!(
+                "| {} | {} | `{}` |",
+                name_cell, description, version
+            ));
         }
         l.push(String::new());
     }
