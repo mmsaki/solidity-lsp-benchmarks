@@ -32,6 +32,8 @@ struct Config {
     benchmarks: Vec<String>,
     #[serde(default)]
     readme: Option<Vec<String>>,
+    #[serde(default)]
+    analysis: Option<Vec<String>>,
     servers: Vec<ServerConfig>,
 }
 
@@ -1034,6 +1036,9 @@ benchmarks:
 # Generate READMEs after benchmarks (omit to skip)
 # readme:
 #   - benchmarks/README.md
+
+# Generate analysis reports after benchmarks (omit to skip)
+# analysis:
 #   - README.md
 
 # LSP servers to benchmark
@@ -1209,6 +1214,7 @@ fn main() {
     let target_col = cfg.col;
     let output_dir = cfg.output;
     let readme_paths = cfg.readme;
+    let analysis_paths = cfg.analysis;
     let partial_dir = format!("{}/partial", output_dir);
 
     // Resolve which benchmarks to run from config
@@ -1476,6 +1482,31 @@ fn main() {
                     Ok(s) => eprintln!("  {} gen-readme exited with {}", style("warn").yellow(), s),
                     Err(e) => eprintln!(
                         "  {} gen-readme not found: {} (run cargo build --release)",
+                        style("warn").yellow(),
+                        e
+                    ),
+                }
+            }
+        }
+
+        // Generate analysis reports if configured
+        if let Some(ref analyses) = analysis_paths {
+            let exe = std::env::current_exe().unwrap();
+            let gen_analysis = exe.parent().unwrap().join("gen-analysis");
+            for analysis in analyses {
+                eprintln!("  {} {}", style("analysis").dim(), analysis);
+                match std::process::Command::new(&gen_analysis)
+                    .args(["--quiet", &path, "-o", analysis])
+                    .status()
+                {
+                    Ok(s) if s.success() => {}
+                    Ok(s) => eprintln!(
+                        "  {} gen-analysis exited with {}",
+                        style("warn").yellow(),
+                        s
+                    ),
+                    Err(e) => eprintln!(
+                        "  {} gen-analysis not found: {} (run cargo build --release)",
                         style("warn").yellow(),
                         e
                     ),

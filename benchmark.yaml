@@ -18,6 +18,8 @@ index_timeout: 15  # seconds for server to index/warm up
 output: benchmarks/v4-core # directory for JSON results
 readme: 
   - benchmarks/v4-core/README.md
+analysis:
+  - README.md
 
 benchmarks:
   - initialize

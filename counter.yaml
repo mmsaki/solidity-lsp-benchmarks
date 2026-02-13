@@ -16,6 +16,8 @@ index_timeout: 15  # seconds for server to index/warm up
 output: benchmarks/counter
 readme: 
   - benchmarks/counter/README.md
+analysis:
+  - benchmarks/counter/ANALYSIS.md
 
 benchmarks:
   - initialize
