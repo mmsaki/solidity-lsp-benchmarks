@@ -2,7 +2,12 @@
 name = "lsp-bench"
 version = "0.1.1"
 edition = "2021"
-publish = false
+description = "Benchmark framework for Language Server Protocol (LSP) servers"
+license = "MIT"
+repository = "https://github.com/mmsaki/solidity-lsp-benchmarks"
+keywords = ["lsp", "benchmark", "language-server"]
+categories = ["development-tools", "command-line-utilities"]
+exclude = ["v4-core/", "examples/", "benchmarks/", "article-*"]
 
 [[bin]]
 name = "lsp-bench"
