@@ -8,7 +8,7 @@ repository = "https://github.com/mmsaki/solidity-lsp-benchmarks"
 keywords = ["lsp", "benchmark", "language-server"]
 categories = ["development-tools", "command-line-utilities"]
 readme = "CRATE_README.md"
-exclude = ["v4-core/", "examples/", "benchmarks/", "article-*"]
+exclude = ["v4-core/", "examples/cache/", "examples/out/", "examples/soljson-latest.js", "benchmarks/", "article-*"]
 
 [[bin]]
 name = "lsp-bench"
