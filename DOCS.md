@@ -1,12 +1,13 @@
 # Documentation
 
-This project produces three binaries:
+This project produces four binaries:
 
 | Binary | Source | Purpose |
 |--------|--------|---------|
 | `bench` | `src/main.rs` | Run LSP benchmarks, produce JSON snapshots |
 | `gen-readme` | `src/gen_readme.rs` | Read a JSON snapshot, generate `README.md` |
 | `gen-analysis` | `src/gen_analysis.rs` | Read a JSON snapshot, generate analysis report |
+| `gen-delta` | `src/gen_delta.rs` | Read a JSON snapshot, generate compact delta comparison table |
 
 ## Quick Start
 
@@ -87,10 +88,9 @@ output: benchmarks # directory for JSON results
 benchmarks:
   - all
 
-# Generate READMEs after benchmarks (omit to skip)
-# readme:
-#   - benchmarks/README.md
-#   - README.md
+# Generate a report after benchmarks (omit to skip)
+# report: REPORT.md
+# report_style: delta    # delta (default), readme, or analysis
 
 # LSP servers to benchmark
 servers:
@@ -121,7 +121,9 @@ servers:
 | `index_timeout` | no | 15 | Time for server to index/warm up in seconds |
 | `output` | no | `benchmarks` | Directory for JSON result files |
 | `benchmarks` | no | all | List of benchmarks to run (see below) |
-| `readme` | no | -- | List of paths to write generated READMEs after benchmarks (omit to skip) |
+| `report` | no | -- | Output path for the generated report (omit to skip report generation) |
+| `report_style` | no | `delta` | Report format: `delta`, `readme`, or `analysis` |
+| `response` | no | `80` | Response output: `full` (no truncation) or a number (truncate to N chars) |
 | `servers` | yes | -- | List of LSP servers to benchmark |
 
 ### Selecting benchmarks
@@ -145,6 +147,22 @@ If omitted, all benchmarks are run.
 
 Valid benchmark names: `all`, `initialize`, `textDocument/diagnostic`, `textDocument/definition`, `textDocument/declaration`, `textDocument/hover`, `textDocument/references`, `textDocument/documentSymbol`, `textDocument/documentLink`.
 
+### Response truncation
+
+The `response` field controls how much of each LSP response is stored in the JSON output. By default, responses are truncated to 80 characters.
+
+```yaml
+# Full response, no truncation
+response: full
+
+# Truncate to 200 characters
+response: 200
+```
+
+When omitted, defaults to 80.
+
+This affects both the per-iteration `response` field in JSON output and the top-level `response` summary. Use `response: true` when you need to inspect the full LSP response for correctness (e.g. verifying Go to Definition returns the right location).
+
 ### Server fields
 
 | Field | Required | Default | Description |
@@ -152,8 +170,36 @@ Valid benchmark names: `all`, `initialize`, `textDocument/diagnostic`, `textDocu
 | `label` | yes | -- | Short name shown in results (e.g. `solc`) |
 | `description` | no | `""` | Longer description for the README |
 | `link` | no | `""` | URL to the server's project page |
-| `cmd` | yes | -- | Command to spawn the server |
+| `cmd` | yes | -- | Command to spawn the server (also the binary name when using `commit`) |
 | `args` | no | `[]` | Command-line arguments passed to `cmd` |
+| `commit` | no | -- | Git ref (branch, tag, or SHA) to checkout and build from |
+| `repo` | no | -- | Path to the git repo to build from (required when `commit` is set) |
+
+### Building from commit
+
+When `commit` is set on a server, `bench` will:
+
+1. `git checkout <commit>` in the `repo` directory
+2. `cargo build --release`
+3. Use the built binary at `<repo>/target/release/<cmd>`
+4. Restore the repo to its original branch/ref afterward
+
+This is useful for comparing performance across branches or commits without manually building each one.
+
+```yaml
+servers:
+  - label: baseline
+    cmd: solidity-language-server
+    commit: main
+    repo: /path/to/solidity-language-server
+
+  - label: my-branch
+    cmd: solidity-language-server
+    commit: fix/position-encoding
+    repo: /path/to/solidity-language-server
+```
+
+The `cmd` field is used as the binary name inside `target/release/`. The `repo` field must point to a Rust project with a `Cargo.toml`. Both servers can share the same repo — `bench` builds them sequentially and restores the original ref after each build.
 
 ### Target position (line and col)
 
@@ -245,6 +291,25 @@ servers:
   - label: solc
     cmd: solc
     args: ["--lsp"]
+```
+
+**Per-commit comparison** -- benchmark two branches of the same server with a delta table:
+
+```yaml
+project: examples
+file: Counter.sol
+line: 21
+col: 8
+report: DELTA.md
+servers:
+  - label: baseline
+    cmd: solidity-language-server
+    commit: main
+    repo: /path/to/solidity-language-server
+  - label: my-branch
+    cmd: solidity-language-server
+    commit: fix/position-encoding
+    repo: /path/to/solidity-language-server
 ```
 
 **Long timeouts** -- for slow servers that need more indexing time:
@@ -383,7 +448,7 @@ After running benchmarks, generate the README from JSON data:
 
 By default, `gen-readme` prints the generated README to stdout and writes the file. Use `-q` / `--quiet` to suppress stdout output.
 
-If you set the `readme` field in your config, `bench` will call `gen-readme` automatically (in quiet mode) after the benchmark run -- no need to run it manually.
+To auto-generate after benchmarks, set `report` and `report_style: readme` in your config.
 
 ## Generate Analysis
 
@@ -418,6 +483,45 @@ The analysis report is organized per-feature. Each LSP method gets its own secti
 | `--base <server>` | Server for head-to-head comparison (default: first server) |
 | `-q, --quiet` | Don't print analysis to stdout |
 
+## Generate Delta
+
+Generate a compact delta comparison table from benchmark JSON:
+
+```sh
+./target/release/gen-delta benchmarks/snapshot.json                            # compare first two servers, print to stdout
+./target/release/gen-delta benchmarks/snapshot.json -o DELTA.md                # write to file
+./target/release/gen-delta benchmarks/snapshot.json --base baseline --head pr  # choose which servers to compare
+./target/release/gen-delta benchmarks/snapshot.json -q -o DELTA.md             # write file only (quiet)
+./target/release/gen-delta --help                                              # show help
+```
+
+The delta table shows a side-by-side comparison of two servers with a relative speed column:
+
+```
+| Benchmark                | baseline | my-branch |       Delta |
+|--------------------------|----------|-----------|-------------|
+| initialize               |   4.05ms |    3.05ms | 1.3x faster |
+| textDocument/diagnostic  | 123.80ms |  124.10ms | 1.0x (tied) |
+| textDocument/hover       |   2.30ms |    2.21ms | 1.0x (tied) |
+| textDocument/definition  |   8.95ms |    8.90ms | 1.0x (tied) |
+| textDocument/documentSymbol |  8.72ms |   12.40ms | 1.4x slower |
+```
+
+Delta thresholds: differences within 5% are reported as "tied".
+
+By default, `gen-delta` compares the first two servers in the JSON. Use `--base` and `--head` to pick specific servers.
+
+Delta is the default `report_style`. To auto-generate after benchmarks, just set `report: DELTA.md` in your config.
+
+### CLI options
+
+| Flag | Description |
+|------|-------------|
+| `-o, --output <path>` | Output file path (default: stdout only) |
+| `--base <server>` | Baseline server (default: first server) |
+| `--head <server>` | Head server to compare (default: second server) |
+| `-q, --quiet` | Don't print table to stdout |
+
 ## Output
 
 `bench` produces JSON snapshots in the `output` directory (default `benchmarks/`):
@@ -426,7 +530,7 @@ The analysis report is organized per-feature. Each LSP method gets its own secti
 
 During a run, partial results are saved to `<output>/partial/` after each benchmark completes. These are cleaned up automatically when the full run finishes.
 
-If `readme` is set in the config, READMEs are automatically generated from the final JSON snapshot and written to each configured path.
+If `report` is set in the config, the report is automatically generated from the final JSON snapshot using the chosen `report_style` (default: `delta`).
 
 ### JSON structure
 

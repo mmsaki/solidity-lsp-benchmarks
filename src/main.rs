@@ -30,10 +30,18 @@ struct Config {
     output: String,
     #[serde(default)]
     benchmarks: Vec<String>,
+    /// Output path for the generated report. Omit to skip report generation.
     #[serde(default)]
-    readme: Option<Vec<String>>,
-    #[serde(default)]
-    analysis: Option<Vec<String>>,
+    report: Option<String>,
+    /// Report style: "delta" (default), "readme", or "analysis".
+    #[serde(default = "default_report_style")]
+    report_style: String,
+    #[serde(
+        default = "default_response_limit",
+        deserialize_with = "deserialize_response_limit",
+        rename = "response"
+    )]
+    response_limit: usize,
     servers: Vec<ServerConfig>,
 }
 
@@ -47,6 +55,12 @@ struct ServerConfig {
     cmd: String,
     #[serde(default)]
     args: Vec<String>,
+    /// Git ref (branch, tag, or SHA) to checkout and build from.
+    #[serde(default)]
+    commit: Option<String>,
+    /// Path to the git repo to build from. Required when `commit` is set.
+    #[serde(default)]
+    repo: Option<String>,
 }
 
 fn default_line() -> u32 {
@@ -69,6 +83,42 @@ fn default_index_timeout() -> u64 {
 }
 fn default_output() -> String {
     "benchmarks".to_string()
+}
+fn default_report_style() -> String {
+    "delta".to_string()
+}
+fn default_response_limit() -> usize {
+    80
+}
+
+/// Deserialize `response` field: accepts "full" or a number.
+/// - "full" → 0 (no limit)
+/// - number → truncate to that many chars
+/// - omitted/null → 80 (default)
+fn deserialize_response_limit<'de, D>(deserializer: D) -> Result<usize, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let val: serde_yaml::Value = serde::Deserialize::deserialize(deserializer)?;
+    match &val {
+        serde_yaml::Value::String(s) if s == "full" => Ok(0),
+        serde_yaml::Value::String(_) => Err(serde::de::Error::custom(
+            "response must be \"full\" or a number",
+        )),
+        serde_yaml::Value::Number(n) => {
+            if let Some(v) = n.as_u64() {
+                Ok(v as usize)
+            } else {
+                Err(serde::de::Error::custom(
+                    "response must be \"full\" or a positive number",
+                ))
+            }
+        }
+        serde_yaml::Value::Null => Ok(80),
+        _ => Err(serde::de::Error::custom(
+            "response must be \"full\" or a number",
+        )),
+    }
 }
 
 fn load_config(path: &str) -> Config {
@@ -359,6 +409,10 @@ fn uri(p: &Path) -> String {
 }
 
 fn available(cmd: &str) -> bool {
+    // Absolute path — just check file exists and is executable
+    if cmd.starts_with('/') {
+        return Path::new(cmd).exists();
+    }
     Command::new("which")
         .arg(cmd)
         .stdout(Stdio::null())
@@ -384,6 +438,90 @@ fn resolve_binary(cmd: &str) -> Option<String> {
         .map(|p| p.to_string_lossy().to_string())
         .ok()
         .or(Some(bin_path))
+}
+
+/// Checkout a git ref in the given repo and `cargo build --release`.
+/// Returns the absolute path to the built binary.
+fn build_from_commit(repo_path: &str, commit: &str, bin_name: &str) -> Result<String, String> {
+    let repo = PathBuf::from(repo_path);
+    if !repo.exists() {
+        return Err(format!("repo directory not found: {}", repo_path));
+    }
+
+    // Save current HEAD so we can restore later
+    let head_out = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&repo)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("git rev-parse failed: {}", e))?;
+    let original_ref = String::from_utf8_lossy(&head_out.stdout).trim().to_string();
+    // If detached, save the SHA instead
+    let original_ref = if original_ref == "HEAD" {
+        let sha_out = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(&repo)
+            .stdout(Stdio::piped())
+            .output()
+            .map_err(|e| format!("git rev-parse HEAD failed: {}", e))?;
+        String::from_utf8_lossy(&sha_out.stdout).trim().to_string()
+    } else {
+        original_ref
+    };
+
+    eprintln!(
+        "  {} checkout {} in {}",
+        style("build").cyan(),
+        style(commit).bold(),
+        repo_path
+    );
+
+    // Checkout the requested ref
+    let checkout = Command::new("git")
+        .args(["checkout", commit])
+        .current_dir(&repo)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .status()
+        .map_err(|e| format!("git checkout failed: {}", e))?;
+    if !checkout.success() {
+        return Err(format!("git checkout {} failed", commit));
+    }
+
+    // Build
+    eprintln!("  {} cargo build --release", style("build").cyan());
+    let build = Command::new("cargo")
+        .args(["build", "--release"])
+        .current_dir(&repo)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .status()
+        .map_err(|e| format!("cargo build failed: {}", e))?;
+    if !build.success() {
+        // Restore original ref before returning error
+        let _ = Command::new("git")
+            .args(["checkout", &original_ref])
+            .current_dir(&repo)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        return Err(format!("cargo build --release failed for {}", commit));
+    }
+
+    // Restore original ref
+    let _ = Command::new("git")
+        .args(["checkout", &original_ref])
+        .current_dir(&repo)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+
+    let binary = repo.join("target/release").join(bin_name);
+    if !binary.exists() {
+        return Err(format!("built binary not found: {}", binary.display()));
+    }
+    Ok(binary.to_string_lossy().to_string())
 }
 
 fn detect_version(cmd: &str) -> String {
@@ -502,7 +640,7 @@ fn response_summary(resp: &Value, max_chars: usize) -> String {
     } else {
         "no result".into()
     };
-    if full.len() <= max_chars {
+    if max_chars == 0 || full.len() <= max_chars {
         full
     } else {
         let break_at = full[..max_chars].rfind('\n').unwrap_or(max_chars);
@@ -698,6 +836,7 @@ fn bench_diagnostics(
     timeout: Duration,
     w: usize,
     n: usize,
+    response_limit: usize,
     on_progress: &dyn Fn(&str),
 ) -> BenchResult {
     let mut iterations = Vec::new();
@@ -735,7 +874,7 @@ fn bench_diagnostics(
                 }
                 on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
                 if i >= w {
-                    let summary = response_summary(&diag_info.message, 80);
+                    let summary = response_summary(&diag_info.message, response_limit);
                     iterations.push((ms, summary));
                 }
             }
@@ -769,6 +908,7 @@ fn bench_lsp_method(
     timeout: Duration,
     w: usize,
     n: usize,
+    response_limit: usize,
     on_progress: &dyn Fn(&str),
 ) -> BenchResult {
     on_progress("spawning");
@@ -829,7 +969,7 @@ fn bench_lsp_method(
                             rss_kb,
                         };
                     }
-                    let summary = response_summary(&resp, 80);
+                    let summary = response_summary(&resp, response_limit);
                     iterations.push((ms, summary));
                 }
             }
@@ -841,7 +981,7 @@ fn bench_lsp_method(
 }
 
 /// Run a benchmark across all servers, showing a spinner per server.
-fn run_bench<F>(servers: &[&Server], f: F) -> Vec<BenchRow>
+fn run_bench<F>(servers: &[&Server], response_limit: usize, f: F) -> Vec<BenchRow>
 where
     F: Fn(&Server, &dyn Fn(&str)) -> BenchResult,
 {
@@ -874,7 +1014,7 @@ where
                 first_response,
                 rss_kb,
             } => {
-                let summary = response_summary(&first_response, 80);
+                let summary = response_summary(&first_response, response_limit);
                 finish_fail(&pb, "invalid response");
                 rows.push(BenchRow {
                     label: srv.label.to_string(),
@@ -1033,13 +1173,14 @@ output: benchmarks # directory for JSON results
 benchmarks:
   - all
 
-# Generate READMEs after benchmarks (omit to skip)
-# readme:
-#   - benchmarks/README.md
+# Generate a report after benchmarks (omit to skip)
+# report: REPORT.md
+# report_style: delta    # delta (default), readme, or analysis
 
-# Generate analysis reports after benchmarks (omit to skip)
-# analysis:
-#   - README.md
+# Response output (default: 80)
+#   full     -> store full response, no truncation
+#   <number> -> truncate to that many chars
+# response: full
 
 # LSP servers to benchmark
 servers:
@@ -1048,6 +1189,18 @@ servers:
     link: https://github.com/example/my-server
     cmd: my-solidity-lsp
     args: []
+
+  # Build from a specific git ref (branch, tag, or SHA).
+  # bench will checkout the ref, cargo build --release, and use the
+  # built binary. The repo is restored to its original ref afterward.
+  # - label: baseline
+  #   cmd: solidity-language-server
+  #   commit: main
+  #   repo: /path/to/solidity-language-server
+  # - label: my-branch
+  #   cmd: solidity-language-server
+  #   commit: fix/my-feature
+  #   repo: /path/to/solidity-language-server
 
   # - label: solc
   #   description: Official Solidity compiler LSP
@@ -1213,8 +1366,9 @@ fn main() {
     let target_line = cfg.line;
     let target_col = cfg.col;
     let output_dir = cfg.output;
-    let readme_paths = cfg.readme;
-    let analysis_paths = cfg.analysis;
+    let report_path = cfg.report;
+    let report_style = cfg.report_style;
+    let response_limit = cfg.response_limit;
     let partial_dir = format!("{}/partial", output_dir);
 
     // Resolve which benchmarks to run from config
@@ -1255,6 +1409,26 @@ fn main() {
         target_line,
         target_col
     );
+
+    // Build from commit if configured — mutates cmd to the built binary path
+    for srv in &mut cfg.servers {
+        if let Some(ref commit) = srv.commit {
+            let repo_path = srv.repo.as_deref().unwrap_or_else(|| {
+                eprintln!("Error: server '{}' has commit but no repo path", srv.label);
+                std::process::exit(1);
+            });
+            match build_from_commit(repo_path, commit, &srv.cmd) {
+                Ok(bin_path) => {
+                    eprintln!("  {} {} -> {}", style("built").green(), srv.label, bin_path);
+                    srv.cmd = bin_path;
+                }
+                Err(e) => {
+                    eprintln!("  {} {} -- {}", style("build failed").red(), srv.label, e);
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
 
     let avail: Vec<&Server> = cfg
         .servers
@@ -1344,7 +1518,7 @@ fn main() {
             "\n{}",
             style(format!("[{}/{}] initialize", num, total)).bold()
         );
-        let rows = run_bench(&avail, |srv, on_progress| {
+        let rows = run_bench(&avail, response_limit, |srv, on_progress| {
             bench_spawn(srv, &root, &cwd, w, n, on_progress)
         });
         all_results.push(("initialize", rows));
@@ -1373,7 +1547,7 @@ fn main() {
             "\n{}",
             style(format!("[{}/{}] textDocument/diagnostic", num, total)).bold()
         );
-        let rows = run_bench(&avail, |srv, on_progress| {
+        let rows = run_bench(&avail, response_limit, |srv, on_progress| {
             bench_diagnostics(
                 srv,
                 &root,
@@ -1382,6 +1556,7 @@ fn main() {
                 index_timeout,
                 w,
                 n,
+                response_limit,
                 on_progress,
             )
         });
@@ -1412,7 +1587,7 @@ fn main() {
                 "\n{}",
                 style(format!("[{}/{}] {}", num, total, method)).bold()
             );
-            let rows = run_bench(&avail, |srv, on_progress| {
+            let rows = run_bench(&avail, response_limit, |srv, on_progress| {
                 bench_lsp_method(
                     srv,
                     &root,
@@ -1424,6 +1599,7 @@ fn main() {
                     timeout,
                     w,
                     n,
+                    response_limit,
                     on_progress,
                 )
             });
@@ -1468,49 +1644,44 @@ fn main() {
         // Clean up partial saves — the final snapshot has everything
         let _ = std::fs::remove_dir_all(&partial_dir);
 
-        // Generate READMEs if configured
-        if let Some(ref readmes) = readme_paths {
+        // Generate report if configured
+        if let Some(ref report_out) = report_path {
             let exe = std::env::current_exe().unwrap();
-            let gen_readme = exe.parent().unwrap().join("gen-readme");
-            for readme in readmes {
-                eprintln!("  {} {}", style("readme").dim(), readme);
-                match std::process::Command::new(&gen_readme)
-                    .args(["--quiet", &path, readme])
-                    .status()
-                {
-                    Ok(s) if s.success() => {}
-                    Ok(s) => eprintln!("  {} gen-readme exited with {}", style("warn").yellow(), s),
-                    Err(e) => eprintln!(
-                        "  {} gen-readme not found: {} (run cargo build --release)",
+            let bin_dir = exe.parent().unwrap();
+            let (bin_name, args): (&str, Vec<&str>) = match report_style.as_str() {
+                "readme" => ("gen-readme", vec!["--quiet", &path, report_out]),
+                "analysis" => ("gen-analysis", vec!["--quiet", &path, "-o", report_out]),
+                "delta" => ("gen-delta", vec!["--quiet", &path, "-o", report_out]),
+                other => {
+                    eprintln!(
+                        "  {} unknown report_style '{}' (expected: delta, readme, analysis)",
                         style("warn").yellow(),
-                        e
-                    ),
+                        other
+                    );
+                    return;
                 }
-            }
-        }
-
-        // Generate analysis reports if configured
-        if let Some(ref analyses) = analysis_paths {
-            let exe = std::env::current_exe().unwrap();
-            let gen_analysis = exe.parent().unwrap().join("gen-analysis");
-            for analysis in analyses {
-                eprintln!("  {} {}", style("analysis").dim(), analysis);
-                match std::process::Command::new(&gen_analysis)
-                    .args(["--quiet", &path, "-o", analysis])
-                    .status()
-                {
-                    Ok(s) if s.success() => {}
-                    Ok(s) => eprintln!(
-                        "  {} gen-analysis exited with {}",
-                        style("warn").yellow(),
-                        s
-                    ),
-                    Err(e) => eprintln!(
-                        "  {} gen-analysis not found: {} (run cargo build --release)",
-                        style("warn").yellow(),
-                        e
-                    ),
-                }
+            };
+            let bin = bin_dir.join(bin_name);
+            eprintln!(
+                "  {} {} -> {}",
+                style("report").dim(),
+                report_style,
+                report_out
+            );
+            match std::process::Command::new(&bin).args(&args).status() {
+                Ok(s) if s.success() => {}
+                Ok(s) => eprintln!(
+                    "  {} {} exited with {}",
+                    style("warn").yellow(),
+                    bin_name,
+                    s
+                ),
+                Err(e) => eprintln!(
+                    "  {} {} not found: {} (run cargo build --release)",
+                    style("warn").yellow(),
+                    bin_name,
+                    e
+                ),
             }
         }
     }
