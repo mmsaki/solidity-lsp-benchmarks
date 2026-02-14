@@ -362,6 +362,9 @@ impl LspClient {
                         "rename": { "dynamicRegistration": false },
                         "signatureHelp": { "dynamicRegistration": false },
                         "codeAction": { "dynamicRegistration": false },
+                    },
+                    "workspace": {
+                        "symbol": { "dynamicRegistration": false }
                     }
                 },
             }),
@@ -1119,10 +1122,24 @@ const ALL_BENCHMARKS: &[&str] = &[
     "textDocument/diagnostic",
     "textDocument/definition",
     "textDocument/declaration",
+    "textDocument/typeDefinition",
+    "textDocument/implementation",
     "textDocument/hover",
     "textDocument/references",
+    "textDocument/completion",
+    "textDocument/signatureHelp",
+    "textDocument/rename",
+    "textDocument/prepareRename",
     "textDocument/documentSymbol",
     "textDocument/documentLink",
+    "textDocument/formatting",
+    "textDocument/foldingRange",
+    "textDocument/selectionRange",
+    "textDocument/codeLens",
+    "textDocument/inlayHint",
+    "textDocument/semanticTokens/full",
+    "textDocument/documentColor",
+    "workspace/symbol",
 ];
 
 fn print_usage() {
@@ -1168,8 +1185,16 @@ output: benchmarks # directory for JSON results
 # Which benchmarks to run (omit or use "all" to run everything)
 # Uses official LSP method names:
 #   initialize, textDocument/diagnostic, textDocument/definition,
-#   textDocument/declaration, textDocument/hover, textDocument/references,
-#   textDocument/documentSymbol, textDocument/documentLink
+#   textDocument/declaration, textDocument/typeDefinition,
+#   textDocument/implementation, textDocument/hover,
+#   textDocument/references, textDocument/completion,
+#   textDocument/signatureHelp, textDocument/rename,
+#   textDocument/prepareRename, textDocument/documentSymbol,
+#   textDocument/documentLink, textDocument/formatting,
+#   textDocument/foldingRange, textDocument/selectionRange,
+#   textDocument/codeLens, textDocument/inlayHint,
+#   textDocument/semanticTokens/full, textDocument/documentColor,
+#   workspace/symbol
 benchmarks:
   - all
 
@@ -1478,6 +1503,43 @@ fn main() {
             "context": { "includeDeclaration": true },
         })
     };
+    let symbol_params = |_file_uri: &str| -> Value { json!({ "query": "" }) };
+    let rename_params = |file_uri: &str| -> Value {
+        json!({
+            "textDocument": { "uri": file_uri },
+            "position": { "line": target_line, "character": target_col },
+            "newName": "__lsp_bench_rename__",
+        })
+    };
+    let completion_params = |file_uri: &str| -> Value {
+        json!({
+            "textDocument": { "uri": file_uri },
+            "position": { "line": target_line, "character": target_col },
+        })
+    };
+    let formatting_params = |file_uri: &str| -> Value {
+        json!({
+            "textDocument": { "uri": file_uri },
+            "options": { "tabSize": 4, "insertSpaces": true },
+        })
+    };
+    let selection_range_params = |file_uri: &str| -> Value {
+        json!({
+            "textDocument": { "uri": file_uri },
+            "positions": [{ "line": target_line, "character": target_col }],
+        })
+    };
+    let inlay_hint_params = |file_uri: &str| -> Value {
+        json!({
+            "textDocument": { "uri": file_uri },
+            "range": {
+                "start": { "line": 0, "character": 0 },
+                "end": { "line": 9999, "character": 0 },
+            },
+        })
+    };
+    let semantic_tokens_params =
+        |file_uri: &str| -> Value { json!({ "textDocument": { "uri": file_uri } }) };
 
     // (config_key, lsp_method, params_fn)
     // config_key and lsp_method are now the same — the official LSP method name
@@ -1492,6 +1554,16 @@ fn main() {
             "textDocument/declaration",
             &position_params,
         ),
+        (
+            "textDocument/typeDefinition",
+            "textDocument/typeDefinition",
+            &position_params,
+        ),
+        (
+            "textDocument/implementation",
+            "textDocument/implementation",
+            &position_params,
+        ),
         ("textDocument/hover", "textDocument/hover", &position_params),
         (
             "textDocument/references",
@@ -1499,6 +1571,22 @@ fn main() {
             &ref_params,
         ),
         (
+            "textDocument/completion",
+            "textDocument/completion",
+            &completion_params,
+        ),
+        (
+            "textDocument/signatureHelp",
+            "textDocument/signatureHelp",
+            &position_params,
+        ),
+        ("textDocument/rename", "textDocument/rename", &rename_params),
+        (
+            "textDocument/prepareRename",
+            "textDocument/prepareRename",
+            &position_params,
+        ),
+        (
             "textDocument/documentSymbol",
             "textDocument/documentSymbol",
             &doc_params,
@@ -1508,6 +1596,42 @@ fn main() {
             "textDocument/documentLink",
             &doc_params,
         ),
+        (
+            "textDocument/formatting",
+            "textDocument/formatting",
+            &formatting_params,
+        ),
+        (
+            "textDocument/foldingRange",
+            "textDocument/foldingRange",
+            &doc_params,
+        ),
+        (
+            "textDocument/selectionRange",
+            "textDocument/selectionRange",
+            &selection_range_params,
+        ),
+        (
+            "textDocument/codeLens",
+            "textDocument/codeLens",
+            &doc_params,
+        ),
+        (
+            "textDocument/inlayHint",
+            "textDocument/inlayHint",
+            &inlay_hint_params,
+        ),
+        (
+            "textDocument/semanticTokens/full",
+            "textDocument/semanticTokens/full",
+            &semantic_tokens_params,
+        ),
+        (
+            "textDocument/documentColor",
+            "textDocument/documentColor",
+            &doc_params,
+        ),
+        ("workspace/symbol", "workspace/symbol", &symbol_params),
     ];
 
     // ── spawn ────────────────────────────────────────────────────────────

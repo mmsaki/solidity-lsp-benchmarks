@@ -145,7 +145,7 @@ benchmarks:
 
 If omitted, all benchmarks are run.
 
-Valid benchmark names: `all`, `initialize`, `textDocument/diagnostic`, `textDocument/definition`, `textDocument/declaration`, `textDocument/hover`, `textDocument/references`, `textDocument/documentSymbol`, `textDocument/documentLink`.
+Valid benchmark names: `all`, `initialize`, `textDocument/diagnostic`, `textDocument/definition`, `textDocument/declaration`, `textDocument/typeDefinition`, `textDocument/implementation`, `textDocument/hover`, `textDocument/references`, `textDocument/completion`, `textDocument/signatureHelp`, `textDocument/rename`, `textDocument/prepareRename`, `textDocument/documentSymbol`, `textDocument/documentLink`, `textDocument/formatting`, `textDocument/foldingRange`, `textDocument/selectionRange`, `textDocument/codeLens`, `textDocument/inlayHint`, `textDocument/semanticTokens/full`, `textDocument/documentColor`, `workspace/symbol`.
 
 ### Response truncation
 
@@ -232,7 +232,7 @@ col  16 (editor):          ^
 
 In the config: `line: 102`, `col: 15`.
 
-The position should land on an identifier that LSP methods can act on -- a type name, function call, variable, etc. This is used by `textDocument/definition`, `textDocument/declaration`, `textDocument/hover`, and `textDocument/references` benchmarks. The `initialize`, `textDocument/diagnostic`, `textDocument/documentSymbol`, and `textDocument/documentLink` benchmarks ignore the position.
+The position should land on an identifier that LSP methods can act on -- a type name, function call, variable, etc. This is used by position-based benchmarks: `textDocument/definition`, `textDocument/declaration`, `textDocument/typeDefinition`, `textDocument/implementation`, `textDocument/hover`, `textDocument/references`, `textDocument/completion`, `textDocument/signatureHelp`, `textDocument/rename`, and `textDocument/prepareRename`. The `initialize`, `textDocument/diagnostic`, and document-level benchmarks (`textDocument/documentSymbol`, `textDocument/documentLink`, `textDocument/formatting`, `textDocument/foldingRange`, `textDocument/selectionRange`, `textDocument/codeLens`, `textDocument/inlayHint`, `textDocument/semanticTokens/full`, `textDocument/documentColor`) ignore the position.
 
 ### Example configs
 
@@ -395,9 +395,11 @@ Benchmarks are named after their official LSP method names:
 
 **textDocument/diagnostic**: Starts a fresh server, opens the target file, and waits for the server to publish diagnostics. Measures how long the server takes to analyze the file. Uses `index_timeout`. A fresh server is spawned for every iteration.
 
-**textDocument/definition**, **textDocument/declaration**, **textDocument/hover**, **textDocument/references**: Starts a single server, opens the target file, waits for diagnostics (using `index_timeout`), then sends repeated LSP method requests at the target position (`line`/`col`). Only the method request time is measured -- the indexing phase is not included in the timings.
+**textDocument/definition**, **textDocument/declaration**, **textDocument/typeDefinition**, **textDocument/implementation**, **textDocument/hover**, **textDocument/references**, **textDocument/completion**, **textDocument/signatureHelp**, **textDocument/rename**, **textDocument/prepareRename**: Starts a single server, opens the target file, waits for diagnostics (using `index_timeout`), then sends repeated LSP method requests at the target position (`line`/`col`). Only the method request time is measured -- the indexing phase is not included in the timings.
 
-**textDocument/documentSymbol**, **textDocument/documentLink**: Same as above but these are document-level methods that don't use the target position.
+**textDocument/documentSymbol**, **textDocument/documentLink**, **textDocument/formatting**, **textDocument/foldingRange**, **textDocument/selectionRange**, **textDocument/codeLens**, **textDocument/inlayHint**, **textDocument/semanticTokens/full**, **textDocument/documentColor**: Same as above but these are document-level methods that don't use the target position.
+
+**workspace/symbol**: Sends a `workspace/symbol` request with an empty query string. This is a workspace-level method that doesn't use the target position or document.
 
 ### Result statuses
 

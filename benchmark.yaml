@@ -28,8 +28,12 @@ benchmarks:
   - textDocument/declaration
   - textDocument/hover
   - textDocument/references
+  - textDocument/completion
+  - textDocument/rename
+  - textDocument/prepareRename
   - textDocument/documentSymbol
   - textDocument/documentLink
+  - workspace/symbol
 
 # LSP servers to benchmark
 servers:

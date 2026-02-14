@@ -24,10 +24,24 @@ lsp-bench               # run benchmarks
 | `textDocument/diagnostic` | Time to analyze a file and return diagnostics |
 | `textDocument/definition` | Go to Definition latency |
 | `textDocument/declaration` | Go to Declaration latency |
+| `textDocument/typeDefinition` | Go to Type Definition latency |
+| `textDocument/implementation` | Go to Implementation latency |
 | `textDocument/hover` | Hover information latency |
 | `textDocument/references` | Find References latency |
+| `textDocument/completion` | Completion suggestions latency |
+| `textDocument/signatureHelp` | Signature Help latency |
+| `textDocument/rename` | Rename symbol latency |
+| `textDocument/prepareRename` | Prepare Rename latency |
 | `textDocument/documentSymbol` | Document Symbols latency |
 | `textDocument/documentLink` | Document Links latency |
+| `textDocument/formatting` | Document Formatting latency |
+| `textDocument/foldingRange` | Folding Ranges latency |
+| `textDocument/selectionRange` | Selection Ranges latency |
+| `textDocument/codeLens` | Code Lens latency |
+| `textDocument/inlayHint` | Inlay Hints latency |
+| `textDocument/semanticTokens/full` | Semantic Tokens latency |
+| `textDocument/documentColor` | Document Color latency |
+| `workspace/symbol` | Workspace Symbol search latency |
 
 Each benchmark records per-iteration latency (p50, p95, mean), the full LSP response, and resident memory (RSS).
 

@@ -147,8 +147,17 @@ fn main() {
         std::process::exit(1);
     });
 
-    // Collect rows: (benchmark_name, base_ms, head_ms, delta_str)
-    let mut rows: Vec<(String, String, String, String)> = Vec::new();
+    // Collect rows: (name, base_ms, head_ms, delta, base_rss, head_rss)
+    struct Row {
+        name: String,
+        base_ms: String,
+        head_ms: String,
+        delta: String,
+        base_rss: String,
+        head_rss: String,
+    }
+    let mut rows: Vec<Row> = Vec::new();
+    let mut has_rss = false;
 
     for bench in benchmarks {
         let name = bench["name"].as_str().unwrap_or("?");
@@ -199,7 +208,27 @@ fn main() {
             (None, None) => ("--".to_string(), "--".to_string(), "--".to_string()),
         };
 
-        rows.push((name.to_string(), base_str, head_str, delta_str));
+        let base_rss = base_entry
+            .and_then(|e| e["rss_kb"].as_u64())
+            .map(format_rss)
+            .unwrap_or_default();
+        let head_rss = head_entry
+            .and_then(|e| e["rss_kb"].as_u64())
+            .map(format_rss)
+            .unwrap_or_default();
+
+        if !base_rss.is_empty() || !head_rss.is_empty() {
+            has_rss = true;
+        }
+
+        rows.push(Row {
+            name: name.to_string(),
+            base_ms: base_str,
+            head_ms: head_str,
+            delta: delta_str,
+            base_rss,
+            head_rss,
+        });
     }
 
     // Build the report
@@ -231,43 +260,117 @@ fn main() {
     }
     table.push('\n');
 
+    // Use short commit hash as column header when available
+    let base_col_label = find_server_meta(&base)
+        .and_then(|m| m["version"].as_str())
+        .map(|v| {
+            let short = extract_short_commit(v);
+            if short != v {
+                short
+            } else {
+                base.clone()
+            }
+        })
+        .unwrap_or_else(|| base.clone());
+    let head_col_label = find_server_meta(&head)
+        .and_then(|m| m["version"].as_str())
+        .map(|v| {
+            let short = extract_short_commit(v);
+            if short != v {
+                short
+            } else {
+                head.clone()
+            }
+        })
+        .unwrap_or_else(|| head.clone());
+
     // Compute column widths
     let col0 = "Benchmark"
         .len()
-        .max(rows.iter().map(|r| r.0.len()).max().unwrap_or(0));
-    let col1 = base
+        .max(rows.iter().map(|r| r.name.len()).max().unwrap_or(0));
+    let col1 = base_col_label
         .len()
-        .max(rows.iter().map(|r| r.1.len()).max().unwrap_or(0));
-    let col2 = head
+        .max(rows.iter().map(|r| r.base_ms.len()).max().unwrap_or(0));
+    let col2 = head_col_label
         .len()
-        .max(rows.iter().map(|r| r.2.len()).max().unwrap_or(0));
+        .max(rows.iter().map(|r| r.head_ms.len()).max().unwrap_or(0));
     let col3 = "Delta"
         .len()
-        .max(rows.iter().map(|r| r.3.len()).max().unwrap_or(0));
+        .max(rows.iter().map(|r| r.delta.len()).max().unwrap_or(0));
 
-    // Header
-    table.push_str(&format!(
-        "| {:<col0$} | {:>col1$} | {:>col2$} | {:>col3$} |\n",
-        "Benchmark", base, head, "Delta"
-    ));
-    table.push_str(&format!(
-        "|{:-<w0$}|{:->w1$}|{:->w2$}|{:->w3$}|\n",
-        "",
-        "",
-        "",
-        "",
-        w0 = col0 + 2,
-        w1 = col1 + 2,
-        w2 = col2 + 2,
-        w3 = col3 + 2,
-    ));
+    if has_rss {
+        // RSS column headers use "RSS base" / "RSS head"
+        let rss_base_hdr = format!("RSS {}", base_col_label);
+        let rss_head_hdr = format!("RSS {}", head_col_label);
+        let col4 = rss_base_hdr
+            .len()
+            .max(rows.iter().map(|r| r.base_rss.len()).max().unwrap_or(0));
+        let col5 = rss_head_hdr
+            .len()
+            .max(rows.iter().map(|r| r.head_rss.len()).max().unwrap_or(0));
 
-    // Data rows
-    for (name, b, h, d) in &rows {
+        // Header
+        table.push_str(&format!(
+            "| {:<col0$} | {:>col1$} | {:>col2$} | {:>col3$} | {:>col4$} | {:>col5$} |\n",
+            "Benchmark", base_col_label, head_col_label, "Delta", rss_base_hdr, rss_head_hdr
+        ));
+        table.push_str(&format!(
+            "|{:-<w0$}|{:->w1$}|{:->w2$}|{:->w3$}|{:->w4$}|{:->w5$}|\n",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            w0 = col0 + 2,
+            w1 = col1 + 2,
+            w2 = col2 + 2,
+            w3 = col3 + 2,
+            w4 = col4 + 2,
+            w5 = col5 + 2,
+        ));
+
+        // Data rows
+        for r in &rows {
+            let base_rss = if r.base_rss.is_empty() {
+                "--"
+            } else {
+                &r.base_rss
+            };
+            let head_rss = if r.head_rss.is_empty() {
+                "--"
+            } else {
+                &r.head_rss
+            };
+            table.push_str(&format!(
+                "| {:<col0$} | {:>col1$} | {:>col2$} | {:>col3$} | {:>col4$} | {:>col5$} |\n",
+                r.name, r.base_ms, r.head_ms, r.delta, base_rss, head_rss
+            ));
+        }
+    } else {
+        // No RSS data — latency-only table
         table.push_str(&format!(
             "| {:<col0$} | {:>col1$} | {:>col2$} | {:>col3$} |\n",
-            name, b, h, d,
+            "Benchmark", base_col_label, head_col_label, "Delta"
         ));
+        table.push_str(&format!(
+            "|{:-<w0$}|{:->w1$}|{:->w2$}|{:->w3$}|\n",
+            "",
+            "",
+            "",
+            "",
+            w0 = col0 + 2,
+            w1 = col1 + 2,
+            w2 = col2 + 2,
+            w3 = col3 + 2,
+        ));
+
+        for r in &rows {
+            table.push_str(&format!(
+                "| {:<col0$} | {:>col1$} | {:>col2$} | {:>col3$} |\n",
+                r.name, r.base_ms, r.head_ms, r.delta,
+            ));
+        }
     }
 
     if !quiet {
@@ -291,6 +394,11 @@ fn format_ms(ms: f64) -> String {
     } else {
         format!("{:.2}ms", ms)
     }
+}
+
+fn format_rss(kb: u64) -> String {
+    let mb = kb as f64 / 1024.0;
+    format!("{:.1}MB", mb)
 }
 
 fn format_delta(base_ms: f64, head_ms: f64) -> String {
