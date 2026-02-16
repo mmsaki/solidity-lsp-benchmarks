@@ -504,12 +504,19 @@ fn generate_analysis(data: &Value, json_path: &str, lead_override: Option<&str>)
 /// Determine display label for a server result: ok, empty, no, timeout, crash
 fn server_status_label(srv: &Value) -> &'static str {
     let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
-    let response = srv.get("response").and_then(|v| v.as_str()).unwrap_or("");
+    let response_str = srv
+        .get("response")
+        .map(|v| {
+            v.as_str()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| serde_json::to_string(v).unwrap_or_default())
+        })
+        .unwrap_or_default();
     let error = srv.get("error").and_then(|v| v.as_str()).unwrap_or("");
     match status {
-        "ok" if response != "null" && response != "[]" && !response.is_empty() => "ok",
+        "ok" if response_str != "null" && response_str != "[]" && !response_str.is_empty() => "ok",
         "ok" | "invalid"
-            if response.contains("Unknown method") || response.contains("unsupported") =>
+            if response_str.contains("Unknown method") || response_str.contains("unsupported") =>
         {
             "no"
         }

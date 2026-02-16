@@ -318,9 +318,9 @@ impl LspClient {
                     .unwrap_or(0);
                 last_count = count;
                 last_msg = msg;
-                if count > 0 {
-                    return Ok(DiagnosticsInfo { message: last_msg });
-                }
+                // if count > 0 {
+                return Ok(DiagnosticsInfo { message: last_msg });
+                // }
             }
         }
     }
@@ -611,28 +611,17 @@ fn is_valid_response(resp: &Value) -> bool {
     }
 }
 
-fn response_summary(resp: &Value, max_chars: usize) -> String {
-    let full = if let Some(err) = resp.get("error") {
-        format!(
-            "error: {}",
-            err.get("message")
+fn response_summary(resp: &Value, _max_chars: usize) -> Value {
+    if let Some(err) = resp.get("error") {
+        json!({
+            "error": err.get("message")
                 .and_then(|m| m.as_str())
                 .unwrap_or("unknown")
-        )
+        })
     } else if let Some(r) = resp.get("result").or_else(|| resp.get("params")) {
-        if r.is_null() {
-            "null".into()
-        } else {
-            serde_json::to_string_pretty(r).unwrap_or_default()
-        }
+        r.clone()
     } else {
-        "no result".into()
-    };
-    if max_chars == 0 || full.len() <= max_chars {
-        full
-    } else {
-        let break_at = full[..max_chars].rfind('\n').unwrap_or(max_chars);
-        format!("{}...", &full[..break_at])
+        Value::Null
     }
 }
 
@@ -653,8 +642,8 @@ fn get_rss(pid: u32) -> Option<u64> {
 
 enum BenchResult {
     Ok {
-        iterations: Vec<(f64, String)>, // (ms, response_summary)
-        rss_kb: Option<u64>,            // resident set size after indexing
+        iterations: Vec<(f64, Value)>, // (ms, response json)
+        rss_kb: Option<u64>,           // resident set size after indexing
     },
     Invalid {
         first_response: Value,
@@ -671,11 +660,11 @@ struct BenchRow {
     p50: f64,
     p95: f64,
     mean: f64,
-    iterations: Vec<(f64, String)>, // (ms, response_summary)
-    rss_kb: Option<u64>,            // resident set size after indexing
+    iterations: Vec<(f64, Value)>, // (ms, response json)
+    rss_kb: Option<u64>,           // resident set size after indexing
     kind: u8,
     fail_msg: String,
-    summary: String,
+    summary: Value,
 }
 
 impl BenchRow {
@@ -801,7 +790,7 @@ fn bench_spawn(
         let ms = start.elapsed().as_secs_f64() * 1000.0;
         on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
         if i >= w {
-            iterations.push((ms, "ok".to_string()));
+            iterations.push((ms, json!("ok")));
         }
         c.kill();
     }
@@ -980,7 +969,7 @@ where
                 let summary = iterations
                     .first()
                     .map(|(_, s)| s.clone())
-                    .unwrap_or_default();
+                    .unwrap_or(Value::Null);
                 finish_pass(&pb, mean, p50, p95);
                 rows.push(BenchRow {
                     label: srv.label.to_string(),
@@ -1021,7 +1010,7 @@ where
                     mean: 0.0,
                     iterations: vec![],
                     rss_kb,
-                    summary: String::new(),
+                    summary: Value::Null,
                     kind: 2,
                     fail_msg: error,
                 });

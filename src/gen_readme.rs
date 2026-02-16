@@ -296,16 +296,23 @@ fn generate_readme(data: &Value, json_path: &str) -> String {
                 if let Some(servers) = bench.get("servers").and_then(|s| s.as_array()) {
                     for srv in servers {
                         let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
-                        let response = srv.get("response").and_then(|v| v.as_str()).unwrap_or("");
+                        let response = srv.get("response");
+                        let response_str = response
+                            .map(|v| {
+                                v.as_str()
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_else(|| serde_json::to_string(v).unwrap_or_default())
+                            })
+                            .unwrap_or_default();
                         let error = srv.get("error").and_then(|v| v.as_str()).unwrap_or("");
                         let icon = if status == "ok"
-                            && response != "null"
-                            && response != "[]"
-                            && !response.is_empty()
+                            && response_str != "null"
+                            && response_str != "[]"
+                            && !response_str.is_empty()
                         {
                             "yes"
-                        } else if response.contains("Unknown method")
-                            || response.contains("unsupported")
+                        } else if response_str.contains("Unknown method")
+                            || response_str.contains("unsupported")
                         {
                             "no"
                         } else if error.contains("timeout")
@@ -474,9 +481,14 @@ fn generate_readme(data: &Value, json_path: &str) -> String {
                             "ok" | "invalid" => {
                                 let response = srv
                                     .get("response")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("(no response)");
-                                let truncated = truncate_response(response, 80);
+                                    .map(|v| {
+                                        v.as_str().map(|s| s.to_string()).unwrap_or_else(|| {
+                                            serde_json::to_string_pretty(v)
+                                                .unwrap_or_else(|_| "(no response)".into())
+                                        })
+                                    })
+                                    .unwrap_or_else(|| "(no response)".into());
+                                let truncated = truncate_response(&response, 80);
                                 l.push("```json".into());
                                 l.push(truncated);
                                 l.push("```".into());
@@ -566,8 +578,16 @@ fn rank_servers<'a>(bench: &Value, medal_icons: &[&'a str]) -> (Vec<&'a str>, Op
 /// Check if a server result is valid (ok status + non-empty, non-null response).
 fn is_valid_result(srv: &Value) -> bool {
     let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
-    let response = srv.get("response").and_then(|v| v.as_str()).unwrap_or("");
-    status == "ok" && response != "null" && response != "no result" && !response.is_empty()
+    if status != "ok" {
+        return false;
+    }
+    match srv.get("response") {
+        None => false,
+        Some(Value::Null) => false,
+        Some(Value::String(s)) => !s.is_empty() && s != "null" && s != "no result",
+        Some(Value::Array(a)) => !a.is_empty(),
+        Some(_) => true,
+    }
 }
 
 /// Format a summary table cell.
@@ -594,7 +614,14 @@ fn format_summary_cell(
             format!(" {:.2}ms{} |", mean, suffix)
         }
         "invalid" => {
-            let response = srv.get("response").and_then(|v| v.as_str()).unwrap_or("");
+            let response = srv
+                .get("response")
+                .map(|v| {
+                    v.as_str()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| serde_json::to_string(v).unwrap_or_default())
+                })
+                .unwrap_or_default();
             if response.contains("Unknown method") || response.contains("unsupported") {
                 " unsupported |".to_string()
             } else {
