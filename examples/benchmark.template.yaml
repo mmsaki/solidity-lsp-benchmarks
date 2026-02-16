@@ -21,7 +21,7 @@ col: 8
 
 # Benchmark settings
 iterations: 10    # number of measured iterations
-warmup: 2         # warmup iterations (discarded)
+warmup: 1         # warmup iterations (discarded)
 timeout: 10       # seconds per LSP request
 index_timeout: 15 # seconds for server to index/warm up
 output: benchmarks # directory for JSON results
@@ -38,26 +38,64 @@ output: benchmarks # directory for JSON results
 #   textDocument/foldingRange, textDocument/selectionRange,
 #   textDocument/codeLens, textDocument/inlayHint,
 #   textDocument/semanticTokens/full, textDocument/documentColor,
-#   workspace/symbol
 benchmarks:
-  - all
+  # - all
+  # - workspace/symbol
+  # - textDocument/definition
 
 # Generate a report after benchmarks (omit to skip)
 # report: REPORT.md
-# report_style: delta    # delta (default), readme, or analysis
+report_style: readme    # delta (default), readme, or analysis
+readme: 
+  - Counter.md
+
+# Per-method position and trigger overrides (optional)
+# Methods not listed here use the global line/col above.
+# methods:
+#   textDocument/completion:
+#     line: 21
+#     col: 9
+#     trigger: "."
+#   textDocument/hover:
+#     line: 10
+#     col: 15
 
 # Response output (default: 80)
 #   full     -> store full response, no truncation
 #   <number> -> truncate to that many chars
-# response: full
+response: full
 
 # LSP servers to benchmark
 servers:
-  - label: my-server
-    description: My Language Server
-    link: https://github.com/example/my-server
-    cmd: my-language-server
+  - label: mmsaki
+    description: Solidity Language Server by mmsaki
+    link: https://github.com/mmsaki/solidity-language-server
+    cmd: solidity-language-server
     args: []
+
+  # - label: solc
+  #   description: Official Solidity compiler LSP
+  #   link: https://docs.soliditylang.org
+  #   cmd: solc
+  #   args: ["--lsp"]
+
+  # - label: nomicfoundation
+  #   description: Hardhat/Nomic Foundation Solidity Language Server
+  #   link: https://github.com/NomicFoundation/hardhat-vscode
+  #   cmd: nomicfoundation-solidity-language-server
+  #   args: ["--stdio"]
+  #
+  # - label: juanfranblanco
+  #   description: VSCode Solidity by Juan Blanco
+  #   link: https://github.com/juanfranblanco/vscode-solidity
+  #   cmd: vscode-solidity-server
+  #   args: ["--stdio"]
+  #
+  # - label: qiuxiang
+  #   description: Solidity Language Server by qiuxiang
+  #   link: https://github.com/qiuxiang/solidity-ls
+  #   cmd: solidity-ls
+  #   args: ["--stdio"]
 
   # Build from a specific git ref (branch, tag, or SHA).
   # lsp-bench will checkout the ref, cargo build --release, and use the

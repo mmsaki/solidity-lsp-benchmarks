@@ -3,6 +3,7 @@ use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -10,6 +11,29 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 // ── Config ──────────────────────────────────────────────────────────────────
+
+/// Per-method configuration overrides.
+///
+/// ```yaml
+/// methods:
+///   textDocument/completion:
+///     line: 105
+///     col: 28
+///     trigger: "."
+///   textDocument/hover:
+///     line: 44
+///     col: 30
+/// ```
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+struct MethodConfig {
+    #[serde(default)]
+    line: Option<u32>,
+    #[serde(default)]
+    col: Option<u32>,
+    /// Trigger character (e.g. ".") — only used for textDocument/completion.
+    #[serde(default)]
+    trigger: Option<String>,
+}
 
 #[derive(Debug, Deserialize, Serialize)]
 struct Config {
@@ -43,11 +67,12 @@ struct Config {
         rename = "response"
     )]
     response_limit: usize,
-    /// Optional trigger character for completion requests (e.g. ".").
-    /// When set, the completion request includes a `context` with
-    /// `triggerKind: 2` (TriggerCharacter) and the given character.
+    /// Deprecated: use methods.textDocument/completion.trigger instead.
     #[serde(default)]
     trigger_character: Option<String>,
+    /// Per-method position and trigger overrides.
+    #[serde(default)]
+    methods: HashMap<String, MethodConfig>,
     servers: Vec<ServerConfig>,
 }
 
@@ -876,7 +901,7 @@ fn bench_lsp_method(
     cwd: &Path,
     target_file: &Path,
     method: &str,
-    params_fn: &dyn Fn(&str) -> Value, // takes file_uri, returns params
+    params_fn: &dyn Fn(&str, &str) -> Value, // takes (method, file_uri), returns params
     index_timeout: Duration,
     timeout: Duration,
     w: usize,
@@ -928,7 +953,7 @@ fn bench_lsp_method(
     for i in 0..(w + n) {
         on_progress(&iter_msg(i, w, n));
         let start = Instant::now();
-        if let Err(e) = c.send(method, params_fn(&file_uri)) {
+        if let Err(e) = c.send(method, params_fn(method, &file_uri)) {
             return BenchResult::Fail { error: e, rss_kb };
         }
         match c.read_response(timeout) {
@@ -1034,6 +1059,7 @@ fn save_json(
     bench_file: &str,
     target_line: u32,
     target_col: u32,
+    methods: &HashMap<String, MethodConfig>,
     dir: &str,
 ) -> String {
     let ts = timestamp();
@@ -1062,19 +1088,45 @@ fn save_json(
             obj
         })
         .collect();
+    // Build methods overrides JSON (only include non-empty)
+    let methods_json: Value = if methods.is_empty() {
+        Value::Null
+    } else {
+        let map: serde_json::Map<String, Value> = methods
+            .iter()
+            .map(|(k, v)| {
+                let mut obj = serde_json::Map::new();
+                if let Some(l) = v.line {
+                    obj.insert("line".into(), json!(l));
+                }
+                if let Some(c) = v.col {
+                    obj.insert("col".into(), json!(c));
+                }
+                if let Some(ref t) = v.trigger {
+                    obj.insert("trigger".into(), json!(t));
+                }
+                (k.clone(), Value::Object(obj))
+            })
+            .collect();
+        Value::Object(map)
+    };
+    let mut settings = json!({
+        "iterations": n,
+        "warmup": w,
+        "timeout_secs": timeout.as_secs(),
+        "index_timeout_secs": index_timeout.as_secs(),
+        "project": project,
+        "file": bench_file,
+        "line": target_line,
+        "col": target_col,
+    });
+    if !methods.is_empty() {
+        settings["methods"] = methods_json;
+    }
     let output = json!({
         "timestamp": ts,
         "date": date,
-        "settings": {
-            "iterations": n,
-            "warmup": w,
-            "timeout_secs": timeout.as_secs(),
-            "index_timeout_secs": index_timeout.as_secs(),
-            "project": project,
-            "file": bench_file,
-            "line": target_line,
-            "col": target_col,
-        },
+        "settings": settings,
         "servers": json_servers,
         "benchmarks": json_benchmarks,
     });
@@ -1172,7 +1224,13 @@ fn main() {
     let index_timeout = Duration::from_secs(cfg.index_timeout);
     let target_line = cfg.line;
     let target_col = cfg.col;
-    let trigger_character = cfg.trigger_character;
+    let methods = cfg.methods.clone();
+    // Support legacy trigger_character — migrate to methods map
+    let trigger_character = cfg.trigger_character.clone().or_else(|| {
+        methods
+            .get("textDocument/completion")
+            .and_then(|m| m.trigger.clone())
+    });
     let output_dir = cfg.output;
     let report_path = cfg.report;
     let report_style = cfg.report_style;
@@ -1266,35 +1324,53 @@ fn main() {
     let mut num = 0usize;
     let mut all_results: Vec<(&str, Vec<BenchRow>)> = Vec::new();
 
+    // Resolve line/col for a given method, falling back to global defaults.
+    let pos_for = |method: &str| -> (u32, u32) {
+        methods
+            .get(method)
+            .map(|m| (m.line.unwrap_or(target_line), m.col.unwrap_or(target_col)))
+            .unwrap_or((target_line, target_col))
+    };
+
     // Position + method params for definition/declaration/hover/references
-    let position_params = |file_uri: &str| -> Value {
+    let position_params = |method: &str, file_uri: &str| -> Value {
+        let (l, c) = pos_for(method);
         json!({
             "textDocument": { "uri": file_uri },
-            "position": { "line": target_line, "character": target_col },
+            "position": { "line": l, "character": c },
         })
     };
-    let doc_params = |file_uri: &str| -> Value { json!({ "textDocument": { "uri": file_uri } }) };
-    let ref_params = |file_uri: &str| -> Value {
+    let doc_params =
+        |_method: &str, file_uri: &str| -> Value { json!({ "textDocument": { "uri": file_uri } }) };
+    let ref_params = |method: &str, file_uri: &str| -> Value {
+        let (l, c) = pos_for(method);
         json!({
             "textDocument": { "uri": file_uri },
-            "position": { "line": target_line, "character": target_col },
+            "position": { "line": l, "character": c },
             "context": { "includeDeclaration": true },
         })
     };
-    let symbol_params = |_file_uri: &str| -> Value { json!({ "query": "" }) };
-    let rename_params = |file_uri: &str| -> Value {
+    let symbol_params = |_method: &str, _file_uri: &str| -> Value { json!({ "query": "" }) };
+    let rename_params = |method: &str, file_uri: &str| -> Value {
+        let (l, c) = pos_for(method);
         json!({
             "textDocument": { "uri": file_uri },
-            "position": { "line": target_line, "character": target_col },
+            "position": { "line": l, "character": c },
             "newName": "__lsp_bench_rename__",
         })
     };
-    let completion_params = |file_uri: &str| -> Value {
+    let completion_params = |method: &str, file_uri: &str| -> Value {
+        let (l, c) = pos_for(method);
         let mut params = json!({
             "textDocument": { "uri": file_uri },
-            "position": { "line": target_line, "character": target_col },
+            "position": { "line": l, "character": c },
         });
-        if let Some(ref tc) = trigger_character {
+        // Trigger from methods map, then legacy top-level trigger_character
+        let tc = methods
+            .get(method)
+            .and_then(|m| m.trigger.as_deref())
+            .or(trigger_character.as_deref());
+        if let Some(tc) = tc {
             params["context"] = json!({
                 "triggerKind": 2,
                 "triggerCharacter": tc,
@@ -1302,19 +1378,20 @@ fn main() {
         }
         params
     };
-    let formatting_params = |file_uri: &str| -> Value {
+    let formatting_params = |_method: &str, file_uri: &str| -> Value {
         json!({
             "textDocument": { "uri": file_uri },
             "options": { "tabSize": 4, "insertSpaces": true },
         })
     };
-    let selection_range_params = |file_uri: &str| -> Value {
+    let selection_range_params = |method: &str, file_uri: &str| -> Value {
+        let (l, c) = pos_for(method);
         json!({
             "textDocument": { "uri": file_uri },
-            "positions": [{ "line": target_line, "character": target_col }],
+            "positions": [{ "line": l, "character": c }],
         })
     };
-    let inlay_hint_params = |file_uri: &str| -> Value {
+    let inlay_hint_params = |_method: &str, file_uri: &str| -> Value {
         json!({
             "textDocument": { "uri": file_uri },
             "range": {
@@ -1324,11 +1401,12 @@ fn main() {
         })
     };
     let semantic_tokens_params =
-        |file_uri: &str| -> Value { json!({ "textDocument": { "uri": file_uri } }) };
+        |_method: &str, file_uri: &str| -> Value { json!({ "textDocument": { "uri": file_uri } }) };
 
     // (config_key, lsp_method, params_fn)
     // config_key and lsp_method are now the same — the official LSP method name
-    let method_benchmarks: Vec<(&str, &str, &dyn Fn(&str) -> Value)> = vec![
+    // params_fn takes (method_name, file_uri) so it can resolve per-method overrides.
+    let method_benchmarks: Vec<(&str, &str, &dyn Fn(&str, &str) -> Value)> = vec![
         (
             "textDocument/definition",
             "textDocument/definition",
@@ -1443,6 +1521,7 @@ fn main() {
             bench_file_rel,
             target_line,
             target_col,
+            &methods,
             &partial_dir,
         );
         eprintln!("  {} {}", style("saved").dim(), style(&p).dim());
@@ -1482,6 +1561,7 @@ fn main() {
             bench_file_rel,
             target_line,
             target_col,
+            &methods,
             &partial_dir,
         );
         eprintln!("  {} {}", style("saved").dim(), style(&p).dim());
@@ -1525,6 +1605,7 @@ fn main() {
                 bench_file_rel,
                 target_line,
                 target_col,
+                &methods,
                 &partial_dir,
             );
             eprintln!("  {} {}", style("saved").dim(), style(&p).dim());
@@ -1546,6 +1627,7 @@ fn main() {
             bench_file_rel,
             target_line,
             target_col,
+            &methods,
             &output_dir,
         );
         eprintln!("\n  {} {}", style("->").green().bold(), path);
