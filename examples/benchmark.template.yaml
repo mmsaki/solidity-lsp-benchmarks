@@ -50,14 +50,19 @@ readme:
   - Counter.md
 
 # Per-method position and trigger overrides (optional)
+# Each method can have its own line/col and trigger character.
 # Methods not listed here use the global line/col above.
+# Only list methods you want to override — omit the rest.
+# The trigger field is only used for textDocument/completion.
+#
 # methods:
 #   textDocument/completion:
-#     line: 21
-#     col: 9
-#     trigger: "."
+#     trigger: "."               # just add a trigger, use global line/col
 #   textDocument/hover:
-#     line: 10
+#     line: 10                   # override line only, col uses global
+#     col: 15
+#   textDocument/definition:
+#     line: 200
 #     col: 15
 
 # Response output (default: 80)

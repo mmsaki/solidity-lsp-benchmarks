@@ -124,6 +124,7 @@ servers:
 | `report` | no | -- | Output path for the generated report (omit to skip report generation) |
 | `report_style` | no | `delta` | Report format: `delta`, `readme`, or `analysis` |
 | `response` | no | `80` | Response output: `full` (no truncation) or a number (truncate to N chars) |
+| `methods` | no | -- | Per-method position and trigger overrides (see below) |
 | `servers` | yes | -- | List of LSP servers to benchmark |
 
 ### Selecting benchmarks
@@ -144,6 +145,33 @@ benchmarks:
 ```
 
 If omitted, all benchmarks are run.
+
+### Per-method overrides
+
+The `methods` map lets you set a different position or trigger character for specific LSP methods. Methods not listed fall back to the global `line`/`col`. Only include methods you want to override.
+
+```yaml
+line: 105
+col: 27
+
+methods:
+  textDocument/completion:
+    trigger: "."               # just add a trigger, use global line/col
+  textDocument/hover:
+    line: 44
+    col: 30                    # override position for hover
+  textDocument/definition:
+    line: 200
+    col: 15
+```
+
+| Field | Description |
+|-------|-------------|
+| `line` | Override line for this method (falls back to global `line`) |
+| `col` | Override column for this method (falls back to global `col`) |
+| `trigger` | Trigger character for completion (e.g. `"."`) — only used by `textDocument/completion` |
+
+You can override just one field — for example, `trigger: "."` alone uses the global position but adds the trigger character. An empty entry like `textDocument/hover: {}` is the same as not listing it at all.
 
 Valid benchmark names: `all`, `initialize`, `textDocument/diagnostic`, `textDocument/definition`, `textDocument/declaration`, `textDocument/typeDefinition`, `textDocument/implementation`, `textDocument/hover`, `textDocument/references`, `textDocument/completion`, `textDocument/signatureHelp`, `textDocument/rename`, `textDocument/prepareRename`, `textDocument/documentSymbol`, `textDocument/documentLink`, `textDocument/formatting`, `textDocument/foldingRange`, `textDocument/selectionRange`, `textDocument/codeLens`, `textDocument/inlayHint`, `textDocument/semanticTokens/full`, `textDocument/documentColor`, `workspace/symbol`.
 
@@ -311,6 +339,34 @@ servers:
     commit: fix/position-encoding
     repo: /path/to/solidity-language-server
 ```
+
+**Per-method positions** -- different cursor positions for different methods:
+
+```yaml
+project: examples
+file: Counter.sol
+line: 21
+col: 8
+
+methods:
+  textDocument/completion:
+    col: 9
+    trigger: "."
+  textDocument/hover:
+    line: 10
+    col: 15
+
+benchmarks:
+  - textDocument/completion
+  - textDocument/hover
+  - textDocument/definition
+
+servers:
+  - label: mmsaki
+    cmd: solidity-language-server
+```
+
+Here `completion` uses line 21 col 9 with a `.` trigger, `hover` uses line 10 col 15, and `definition` uses the global line 21 col 8.
 
 **Long timeouts** -- for slow servers that need more indexing time:
 
