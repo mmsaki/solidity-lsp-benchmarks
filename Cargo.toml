@@ -1,6 +1,6 @@
 [package]
 name = "lsp-bench"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Benchmark framework for Language Server Protocol (LSP) servers"
 license = "MIT"

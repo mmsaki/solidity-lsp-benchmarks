@@ -12,6 +12,24 @@ use std::time::{Duration, Instant};
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
+/// A file snapshot sent via didChange, with its own cursor position.
+///
+/// ```yaml
+/// didChange:
+///   - file: src/libraries/Pool.v2.sol
+///     line: 107
+///     col: 15
+/// ```
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct FileSnapshot {
+    /// Path to the snapshot file (relative to project).
+    file: String,
+    /// 0-based line for the benchmark request after this snapshot.
+    line: u32,
+    /// 0-based column for the benchmark request after this snapshot.
+    col: u32,
+}
+
 /// Per-method configuration overrides.
 ///
 /// ```yaml
@@ -20,9 +38,16 @@ use std::time::{Duration, Instant};
 ///     line: 105
 ///     col: 28
 ///     trigger: "."
-///   textDocument/hover:
-///     line: 44
-///     col: 30
+///   textDocument/definition:
+///     line: 50
+///     col: 10
+///     didChange:
+///       - file: src/libraries/Pool.v2.sol
+///         line: 107
+///         col: 15
+///       - file: src/libraries/Pool.v3.sol
+///         line: 112
+///         col: 15
 /// ```
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
 struct MethodConfig {
@@ -33,6 +58,10 @@ struct MethodConfig {
     /// Trigger character (e.g. ".") — only used for textDocument/completion.
     #[serde(default)]
     trigger: Option<String>,
+    /// File snapshots sent sequentially via didChange. Each snapshot is one
+    /// iteration: send content, run one request at that snapshot's line/col.
+    #[serde(default, rename = "didChange")]
+    did_change: Vec<FileSnapshot>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -270,8 +299,9 @@ impl LspClient {
         })
     }
 
-    fn send(&mut self, method: &str, params: Value) -> Result<(), String> {
-        let msg = json!({"jsonrpc":"2.0","id":self.id,"method":method,"params":params});
+    fn send(&mut self, method: &str, params: Value) -> Result<i64, String> {
+        let id = self.id;
+        let msg = json!({"jsonrpc":"2.0","id":id,"method":method,"params":params});
         self.id += 1;
         let body = serde_json::to_string(&msg).unwrap();
         write!(
@@ -281,7 +311,8 @@ impl LspClient {
             body
         )
         .map_err(|e| e.to_string())?;
-        self.writer.flush().map_err(|e| e.to_string())
+        self.writer.flush().map_err(|e| e.to_string())?;
+        Ok(id)
     }
 
     fn notif(&mut self, method: &str, params: Value) -> Result<(), String> {
@@ -304,7 +335,7 @@ impl LspClient {
         })
     }
 
-    fn read_response(&mut self, timeout: Duration) -> Result<Value, String> {
+    fn read_response(&mut self, expected_id: i64, timeout: Duration) -> Result<Value, String> {
         let deadline = Instant::now() + timeout;
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
@@ -312,7 +343,8 @@ impl LspClient {
                 return Err("timeout".into());
             }
             let msg = self.recv(remaining)?;
-            if msg.get("id").is_some() {
+            // Match by id — skip server-to-client requests and notifications
+            if msg.get("id").and_then(|v| v.as_i64()) == Some(expected_id) {
                 return Ok(msg);
             }
         }
@@ -351,7 +383,7 @@ impl LspClient {
     }
 
     fn initialize(&mut self, root: &str) -> Result<(), String> {
-        self.send(
+        let id = self.send(
             "initialize",
             json!({
                 "processId": std::process::id(),
@@ -379,7 +411,7 @@ impl LspClient {
                 },
             }),
         )?;
-        self.read_response(Duration::from_secs(10))?;
+        self.read_response(id, Duration::from_secs(10))?;
         self.notif("initialized", json!({}))
     }
 
@@ -395,6 +427,17 @@ impl LspClient {
                     "version": 1,
                     "text": content,
                 }
+            }),
+        )
+    }
+
+    /// Send a full-document textDocument/didChange notification.
+    fn did_change(&mut self, file_uri: &str, version: i32, text: &str) -> Result<(), String> {
+        self.notif(
+            "textDocument/didChange",
+            json!({
+                "textDocument": { "uri": file_uri, "version": version },
+                "contentChanges": [{ "text": text }],
             }),
         )
     }
@@ -706,13 +749,10 @@ impl BenchRow {
                     .iterations
                     .iter()
                     .map(|(ms, resp)| {
-                        let mut iter = json!({
+                        json!({
                             "ms": (ms * 100.0).round() / 100.0,
-                        });
-                        if resp != &self.summary {
-                            iter["response"] = resp.clone();
-                        }
-                        iter
+                            "response": resp,
+                        })
                     })
                     .collect();
                 let mut obj = json!({
@@ -962,16 +1002,14 @@ fn bench_lsp_method(
     for i in 0..(w + n) {
         on_progress(&iter_msg(i, w, n));
 
-        // Wait for a valid response, re-sending if the server returns an incomplete result.
-        // Some servers build caches asynchronously, so early responses may be empty
-        // (e.g. completions with isIncomplete: true, items: []).
         let deadline = Instant::now() + timeout;
         loop {
             let start = Instant::now();
-            if let Err(e) = c.send(method, params_fn(method, &file_uri)) {
-                return BenchResult::Fail { error: e, rss_kb };
-            }
-            match c.read_response(timeout) {
+            let req_id = match c.send(method, params_fn(method, &file_uri)) {
+                Ok(id) => id,
+                Err(e) => return BenchResult::Fail { error: e, rss_kb },
+            };
+            match c.read_response(req_id, timeout) {
                 Ok(resp) => {
                     let ms = start.elapsed().as_secs_f64() * 1000.0;
                     if is_valid_response(&resp) {
@@ -982,7 +1020,6 @@ fn bench_lsp_method(
                         }
                         break;
                     }
-                    // Not ready yet — re-send if time remains
                     if Instant::now() >= deadline {
                         return BenchResult::Invalid {
                             first_response: resp,
@@ -992,6 +1029,130 @@ fn bench_lsp_method(
                 }
                 Err(e) => return BenchResult::Fail { error: e, rss_kb },
             }
+        }
+    }
+    c.kill();
+    BenchResult::Ok { iterations, rss_kb }
+}
+
+/// A resolved snapshot: absolute path + position to benchmark at.
+struct ResolvedSnapshot {
+    path: PathBuf,
+    line: u32,
+    col: u32,
+}
+
+/// Benchmark an LSP method across sequential file snapshots on a single server.
+/// Spawns once, opens the original file, waits for diagnostics, then for each
+/// snapshot: sends didChange → sends one request at that snapshot's line/col.
+/// Each snapshot is one iteration. Returns a single BenchResult with one
+/// iteration per snapshot.
+fn bench_lsp_snapshots(
+    srv: &ServerConfig,
+    root: &str,
+    cwd: &Path,
+    target_file: &Path,
+    method: &str,
+    snapshots: &[ResolvedSnapshot],
+    index_timeout: Duration,
+    timeout: Duration,
+    response_limit: usize,
+    on_progress: &dyn Fn(&str),
+) -> BenchResult {
+    on_progress("spawning");
+    let mut c = match LspClient::spawn(&srv.cmd, &srv.args, cwd) {
+        Ok(c) => c,
+        Err(e) => {
+            return BenchResult::Fail {
+                error: e,
+                rss_kb: None,
+            }
+        }
+    };
+    if let Err(e) = c.initialize(root) {
+        let rss = get_rss(c.child.id());
+        return BenchResult::Fail {
+            error: e,
+            rss_kb: rss,
+        };
+    }
+    if let Err(e) = c.open_file(target_file) {
+        let rss = get_rss(c.child.id());
+        return BenchResult::Fail {
+            error: e,
+            rss_kb: rss,
+        };
+    }
+    on_progress("waiting for diagnostics");
+    match c.wait_for_valid_diagnostics(index_timeout) {
+        Ok(_) => {}
+        Err(e) => {
+            let rss = get_rss(c.child.id());
+            return BenchResult::Fail {
+                error: format!("wait_for_diagnostics: {}", e),
+                rss_kb: rss,
+            };
+        }
+    }
+    let rss_kb = get_rss(c.child.id());
+    let file_uri = uri(target_file);
+
+    let total = snapshots.len();
+    let mut iterations = Vec::new();
+    for (si, snap) in snapshots.iter().enumerate() {
+        let version = (si + 2) as i32; // didOpen was version 1
+        let snap_name = snap
+            .path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        on_progress(&format!("[{}/{}] didChange {}", si + 1, total, snap_name));
+
+        // Send the snapshot content
+        match std::fs::read_to_string(&snap.path) {
+            Ok(content) => {
+                if let Err(e) = c.did_change(&file_uri, version, &content) {
+                    return BenchResult::Fail { error: e, rss_kb };
+                }
+            }
+            Err(e) => {
+                return BenchResult::Fail {
+                    error: format!("{}: {}", snap.path.display(), e),
+                    rss_kb,
+                }
+            }
+        }
+
+        // One request at this snapshot's position
+        let params = json!({
+            "textDocument": { "uri": &file_uri },
+            "position": { "line": snap.line, "character": snap.col },
+        });
+        let start = Instant::now();
+        let req_id = match c.send(method, params) {
+            Ok(id) => id,
+            Err(e) => return BenchResult::Fail { error: e, rss_kb },
+        };
+        match c.read_response(req_id, timeout) {
+            Ok(resp) => {
+                let ms = start.elapsed().as_secs_f64() * 1000.0;
+                let summary = response_summary(&resp, response_limit);
+                on_progress(&format!(
+                    "[{}/{}] {}  {:.1}ms{}",
+                    si + 1,
+                    total,
+                    snap_name,
+                    ms,
+                    if is_valid_response(&resp) {
+                        ""
+                    } else {
+                        "  (null)"
+                    }
+                ));
+                iterations.push((ms, summary));
+            }
+            Err(e) => return BenchResult::Fail { error: e, rss_kb },
         }
     }
     c.kill();
@@ -1596,22 +1757,59 @@ fn main() {
                 "\n{}",
                 style(format!("[{}/{}] {}", num, total, method)).bold()
             );
-            let rows = run_bench(&avail, response_limit, |srv, on_progress| {
-                bench_lsp_method(
-                    srv,
-                    &root,
-                    &cwd,
-                    &bench_sol,
-                    lsp_method,
-                    *params_fn,
-                    index_timeout,
-                    timeout,
-                    w,
-                    n,
-                    response_limit,
-                    on_progress,
-                )
-            });
+            let snapshots: Vec<ResolvedSnapshot> = methods
+                .get(*method)
+                .map(|m| {
+                    m.did_change
+                        .iter()
+                        .map(|s| ResolvedSnapshot {
+                            path: cwd.join(&s.file),
+                            line: s.line,
+                            col: s.col,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            if !snapshots.is_empty() {
+                eprintln!(
+                    "  {} {} snapshot(s) via didChange",
+                    style("edit").cyan(),
+                    snapshots.len()
+                );
+            }
+            let rows = if snapshots.is_empty() {
+                run_bench(&avail, response_limit, |srv, on_progress| {
+                    bench_lsp_method(
+                        srv,
+                        &root,
+                        &cwd,
+                        &bench_sol,
+                        lsp_method,
+                        *params_fn,
+                        index_timeout,
+                        timeout,
+                        w,
+                        n,
+                        response_limit,
+                        on_progress,
+                    )
+                })
+            } else {
+                run_bench(&avail, response_limit, |srv, on_progress| {
+                    bench_lsp_snapshots(
+                        srv,
+                        &root,
+                        &cwd,
+                        &bench_sol,
+                        lsp_method,
+                        &snapshots,
+                        index_timeout,
+                        timeout,
+                        response_limit,
+                        on_progress,
+                    )
+                })
+            };
             all_results.push((method, rows));
             let p = save_json(
                 &all_results,

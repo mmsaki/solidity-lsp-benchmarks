@@ -170,8 +170,58 @@ methods:
 | `line` | Override line for this method (falls back to global `line`) |
 | `col` | Override column for this method (falls back to global `col`) |
 | `trigger` | Trigger character for completion (e.g. `"."`) — only used by `textDocument/completion` |
+| `didChange` | List of file snapshots to send via `textDocument/didChange` before benchmarking (see below) |
 
 You can override just one field — for example, `trigger: "."` alone uses the global position but adds the trigger character. An empty entry like `textDocument/hover: {}` is the same as not listing it at all.
+
+### didChange snapshots
+
+The `didChange` field lets you benchmark LSP responses against edited (unsaved) buffer states. Each entry is a file snapshot sent to the server via `textDocument/didChange`, with its own cursor position for the benchmark request.
+
+```yaml
+methods:
+  textDocument/definition:
+    line: 102
+    col: 15
+    didChange:
+      - file: src/libraries/Pool.sol.snapshot0
+        line: 102
+        col: 15
+      - file: src/libraries/Pool.sol.snapshot1
+        line: 107
+        col: 15
+```
+
+| Field | Description |
+|-------|-------------|
+| `file` | Path to the snapshot file (relative to project) |
+| `line` | 0-based line for the benchmark request after this snapshot |
+| `col` | 0-based column for the benchmark request after this snapshot |
+
+**How it works:**
+
+1. The original file (`file` in the top-level config) is opened via `textDocument/didOpen`
+2. The server indexes it and publishes diagnostics (normal startup)
+3. For each snapshot in order: the snapshot file's content is sent via `textDocument/didChange` (full document sync, incrementing version), then one benchmark request is sent at that snapshot's `line`/`col`
+4. Each snapshot is one iteration in the results — no separate warmup or iteration count
+
+**When to use this:**
+
+- Testing goto definition / hover / completions on buffers that have been edited but not saved
+- Verifying server behavior when AST byte offsets are stale (buffer diverges from last build)
+- Reproducing bugs that only appear after specific edit sequences
+
+**Snapshot file naming:**
+
+Use `.snapshot1`, `.snapshot2`, etc. as the file extension to prevent your editor from auto-formatting them:
+
+```
+Pool.sol              ← original (opened via didOpen)
+Pool.sol.snapshot0    ← minor edit (e.g. trailing newline)
+Pool.sol.snapshot1    ← larger edit (e.g. lines inserted at top)
+```
+
+When `didChange` is not set, the benchmark runs normally with warmup + iterations of the same request.
 
 Valid benchmark names: `all`, `initialize`, `textDocument/diagnostic`, `textDocument/definition`, `textDocument/declaration`, `textDocument/typeDefinition`, `textDocument/implementation`, `textDocument/hover`, `textDocument/references`, `textDocument/completion`, `textDocument/signatureHelp`, `textDocument/rename`, `textDocument/prepareRename`, `textDocument/documentSymbol`, `textDocument/documentLink`, `textDocument/formatting`, `textDocument/foldingRange`, `textDocument/selectionRange`, `textDocument/codeLens`, `textDocument/inlayHint`, `textDocument/semanticTokens/full`, `textDocument/documentColor`, `workspace/symbol`.
 
@@ -367,6 +417,38 @@ servers:
 ```
 
 Here `completion` uses line 21 col 9 with a `.` trigger, `hover` uses line 10 col 15, and `definition` uses the global line 21 col 8.
+
+**didChange snapshots** -- benchmark goto definition against edited buffer states:
+
+```yaml
+project: v4-core
+file: src/libraries/Pool.sol
+line: 102
+col: 15
+response: full
+output: benchmarks/v4-core
+
+benchmarks:
+  - textDocument/definition
+
+methods:
+  textDocument/definition:
+    line: 102
+    col: 15
+    didChange:
+      - file: src/libraries/Pool.sol.snapshot0
+        line: 102
+        col: 15
+      - file: src/libraries/Pool.sol.snapshot1
+        line: 107
+        col: 15
+
+servers:
+  - label: mmsaki
+    cmd: solidity-language-server
+```
+
+Here `Pool.sol` is opened normally, then each snapshot is sent via `textDocument/didChange`. Snapshot0 has a minor edit (same cursor position), snapshot1 has 5 blank lines inserted at the top (cursor shifted to line 107). Each snapshot produces one iteration in the results.
 
 **Long timeouts** -- for slow servers that need more indexing time:
 
@@ -579,7 +661,7 @@ If `report` is set in the config, the report is automatically generated from the
 
 ### JSON structure
 
-Each result stores per-iteration data in an `iterations` array. For successful benchmarks (`status: "ok"`), the top-level `response` field contains the canonical response (from the first iteration). Individual iterations record only their latency — unless their response differs from the canonical one, in which case the differing `response` is included:
+Each result stores per-iteration data in an `iterations` array. For successful benchmarks (`status: "ok"`), the top-level `response` field contains the summary response (from the first iteration). Every iteration includes both its latency (`ms`) and its full `response`:
 
 ```json
 {
@@ -591,14 +673,12 @@ Each result stores per-iteration data in an `iterations` array. For successful b
   "rss_kb": 40944,
   "response": { "uri": "file:///...TickMath.sol", "range": { "start": { "line": 9, "character": 4 }, "end": { "line": 9, "character": 12 } } },
   "iterations": [
-    { "ms": 8.80 },
-    { "ms": 8.45 },
-    { "ms": 8.55, "response": { "uri": "file:///...Other.sol", "range": { "..." : "..." } } }
+    { "ms": 8.80, "response": { "uri": "file:///...TickMath.sol", "range": { "..." : "..." } } },
+    { "ms": 8.45, "response": { "uri": "file:///...TickMath.sol", "range": { "..." : "..." } } },
+    { "ms": 8.55, "response": { "uri": "file:///...TickMath.sol", "range": { "..." : "..." } } }
   ]
 }
 ```
-
-In this example, iterations 1 and 2 returned the same response as the top-level `response`, so only `ms` is stored. Iteration 3 returned something different, so its `response` is included explicitly.
 
 Responses are stored as native JSON values (objects, arrays, strings, or null) — not escaped strings. For `initialize` benchmarks, the response is `"ok"` for each iteration and `rss_kb` is omitted (process is too short-lived). For `textDocument/diagnostic` benchmarks, `rss_kb` is the peak RSS across all iterations (each iteration spawns a fresh server). For method benchmarks (`textDocument/definition`, `textDocument/hover`, etc.), `rss_kb` is measured once after indexing completes.
 
@@ -612,7 +692,7 @@ Failed or unsupported benchmarks (`status: "fail"` or `"invalid"`) have no `iter
 }
 ```
 
-The per-iteration data enables warmup curve analysis, response consistency checks across iterations, and detection of performance degradation over time.
+The per-iteration data enables warmup curve analysis, response consistency checks across iterations, and detection of performance degradation over time. When using `didChange` snapshots, each snapshot produces one iteration — comparing responses across iterations shows how the server handles different buffer states.
 
 `gen-readme` reads a JSON snapshot and writes `README.md` with:
 - Summary results table with medals and trophy
