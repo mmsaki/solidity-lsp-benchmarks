@@ -89,6 +89,26 @@ methods:
     col: 15
 ```
 
+### Verification
+
+Add `expect` fields to assert responses match expected values. Run with `--verify` to turn benchmarks into regression tests:
+
+```yaml
+methods:
+  textDocument/definition:
+    expect:
+      file: SafeCast.sol
+      line: 39
+```
+
+```
+$ lsp-bench --verify
+  ✓ mmsaki
+  verify 1/1 expectations passed
+```
+
+Exits non-zero on any mismatch. See [DOCS.md](DOCS.md) for per-snapshot expect overrides.
+
 ### Config Fields
 
 | Field | Default | Description |
@@ -103,7 +123,7 @@ methods:
 | `index_timeout` | 15 | Seconds for server to index |
 | `output` | `benchmarks` | Directory for JSON results |
 | `benchmarks` | all | List of benchmarks to run |
-| `methods` | -- | Per-method `line`, `col`, and `trigger` overrides |
+| `methods` | -- | Per-method `line`, `col`, `trigger`, and `expect` overrides |
 | `response` | 80 | `full` (no truncation) or a number (truncate to N chars) |
 | `report` | -- | Output path for generated report |
 | `report_style` | `delta` | Report format: `delta`, `readme`, or `analysis` |
@@ -113,6 +133,7 @@ methods:
 ```sh
 lsp-bench                            # uses benchmark.yaml
 lsp-bench -c my-config.yaml          # custom config
+lsp-bench --verify                   # check responses against expect fields
 lsp-bench init                       # generate a benchmark.yaml template
 lsp-bench --version                  # show version with commit hash
 ```
@@ -120,6 +141,7 @@ lsp-bench --version                  # show version with commit hash
 | Flag | Description |
 |------|-------------|
 | `-c, --config <PATH>` | Config file (default: `benchmark.yaml`) |
+| `--verify` | Check responses against `expect` fields. Exits non-zero on mismatch. |
 | `-V, --version` | Show version (includes commit hash, OS, arch) |
 | `-h, --help` | Show help |
 

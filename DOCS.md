@@ -170,6 +170,7 @@ methods:
 | `line` | Override line for this method (falls back to global `line`) |
 | `col` | Override column for this method (falls back to global `col`) |
 | `trigger` | Trigger character for completion (e.g. `"."`) — only used by `textDocument/completion` |
+| `expect` | Expected response for `--verify` mode (see [Verification](#verification) below) |
 | `didChange` | List of file snapshots to send via `textDocument/didChange` before benchmarking (see below) |
 
 You can override just one field — for example, `trigger: "."` alone uses the global position but adds the trigger character. An empty entry like `textDocument/hover: {}` is the same as not listing it at all.
@@ -197,6 +198,7 @@ methods:
 | `file` | Path to the snapshot file (relative to project) |
 | `line` | 0-based line for the benchmark request after this snapshot |
 | `col` | 0-based column for the benchmark request after this snapshot |
+| `expect` | Expected response for this snapshot (overrides method-level `expect` for `--verify`) |
 
 **How it works:**
 
@@ -222,6 +224,66 @@ Pool.sol.snapshot1    ← larger edit (e.g. lines inserted at top)
 ```
 
 When `didChange` is not set, the benchmark runs normally with warmup + iterations of the same request.
+
+### Verification
+
+The `--verify` flag turns benchmarks into regression tests. Add `expect` fields to your config to declare the expected response, then run with `--verify` to check actual results against expectations.
+
+```yaml
+methods:
+  textDocument/definition:
+    line: 217
+    col: 26
+    expect:
+      file: SafeCast.sol    # response URI must end with this
+      line: 39              # response range.start.line must match (0-based)
+    didChange:
+      - file: src/libraries/Pool.sol.chain0
+        line: 217
+        col: 26
+      - file: src/libraries/Pool.sol.dirty
+        line: 216
+        col: 22
+        expect:             # per-snapshot override
+          file: SafeCast.sol
+          line: 39
+```
+
+```sh
+lsp-bench --config goto-toInt128.yaml --verify
+```
+
+Output:
+
+```
+[1/1] textDocument/definition
+  edit 2 snapshot(s) via didChange
+  ✓ [1] Pool.sol.chain0
+  ✓ [2] Pool.sol.dirty
+
+  verify 2/2 expectations passed
+```
+
+On failure, the mismatch is reported and the process exits with code 1:
+
+```
+  ✗ [1] Pool.sol.dirty — line: expected 39 but got 55
+
+  verify 1/2 expectations failed
+```
+
+**Expect fields:**
+
+| Field | Description |
+|-------|-------------|
+| `file` | Expected filename suffix. The response URI must end with this string (e.g. `SafeCast.sol`). |
+| `line` | Expected 0-based line number. Checked against `range.start.line` (Location) or `targetRange.start.line` (LocationLink). |
+
+Both fields are optional — you can check just the file, just the line, or both.
+
+**Precedence:** Per-snapshot `expect` overrides the method-level `expect`. If neither is set, that snapshot/iteration is skipped (not counted as pass or fail).
+
+**Without didChange:** For non-snapshot benchmarks, the method-level `expect` is checked against the first iteration's response.
 
 Valid benchmark names: `all`, `initialize`, `textDocument/diagnostic`, `textDocument/definition`, `textDocument/declaration`, `textDocument/typeDefinition`, `textDocument/implementation`, `textDocument/hover`, `textDocument/references`, `textDocument/completion`, `textDocument/signatureHelp`, `textDocument/rename`, `textDocument/prepareRename`, `textDocument/documentSymbol`, `textDocument/documentLink`, `textDocument/formatting`, `textDocument/foldingRange`, `textDocument/selectionRange`, `textDocument/codeLens`, `textDocument/inlayHint`, `textDocument/semanticTokens/full`, `textDocument/documentColor`, `workspace/symbol`.
 
@@ -450,6 +512,40 @@ servers:
 
 Here `Pool.sol` is opened normally, then each snapshot is sent via `textDocument/didChange`. Snapshot0 has a minor edit (same cursor position), snapshot1 has 5 blank lines inserted at the top (cursor shifted to line 107). Each snapshot produces one iteration in the results.
 
+**Verification** -- assert goto definition resolves correctly across dirty snapshots:
+
+```yaml
+project: v4-core
+file: src/libraries/Pool.sol
+line: 217
+col: 26
+response: full
+
+benchmarks:
+  - textDocument/definition
+
+methods:
+  textDocument/definition:
+    line: 217
+    col: 26
+    expect:
+      file: SafeCast.sol
+      line: 39
+    didChange:
+      - file: src/libraries/Pool.sol.chain0
+        line: 217
+        col: 26
+      - file: src/libraries/Pool.sol.dirty
+        line: 216
+        col: 22
+
+servers:
+  - label: mmsaki
+    cmd: solidity-language-server
+```
+
+Run with `lsp-bench --config toInt128.yaml --verify` to check that all snapshots resolve to `SafeCast.sol:39`.
+
 **Long timeouts** -- for slow servers that need more indexing time:
 
 ```yaml
@@ -482,6 +578,7 @@ lsp-bench -c configs/fast.yaml       # config can be in any path
 | Flag | Description |
 |------|-------------|
 | `-c, --config <PATH>` | Config file path (default: `benchmark.yaml`) |
+| `--verify` | Check responses against `expect` fields in config. Exits non-zero on mismatch. |
 | `-V, --version` | Show version (includes commit hash, OS, and architecture) |
 | `-h, --help` | Show help |
 

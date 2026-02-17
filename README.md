@@ -94,6 +94,30 @@ methods:
     col: 15
 ```
 
+### Verification
+
+Add `expect` fields to assert responses match expected values. Run with `--verify` to turn benchmarks into regression tests:
+
+```yaml
+methods:
+  textDocument/definition:
+    expect:
+      file: SafeCast.sol
+      line: 39
+    didChange:
+      - file: Pool.sol.dirty
+        line: 216
+        col: 22
+```
+
+```
+$ lsp-bench --config goto.yaml --verify
+  ✓ [1] Pool.sol.dirty
+  verify 1/1 expectations passed
+```
+
+Exits non-zero on any mismatch. Per-snapshot `expect` overrides the method-level one.
+
 ### Config Fields
 
 | Field | Default | Description |
@@ -120,6 +144,7 @@ See [DOCS.md](DOCS.md) for the full configuration reference, example configs, me
 ```sh
 lsp-bench                            # uses benchmark.yaml
 lsp-bench -c my-config.yaml          # custom config
+lsp-bench --verify                   # check responses against expect fields
 lsp-bench init                       # generate a benchmark.yaml template
 lsp-bench --version                  # show version with commit hash
 ```
@@ -127,6 +152,7 @@ lsp-bench --version                  # show version with commit hash
 | Flag | Description |
 |------|-------------|
 | `-c, --config <PATH>` | Config file (default: `benchmark.yaml`) |
+| `--verify` | Check responses against `expect` fields in config. Exits non-zero on mismatch. |
 | `-V, --version` | Show version (includes commit hash, OS, arch) |
 | `-h, --help` | Show help |
 
