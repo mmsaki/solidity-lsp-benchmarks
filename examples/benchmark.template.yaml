@@ -49,11 +49,16 @@ report_style: readme    # delta (default), readme, or analysis
 readme: 
   - Counter.md
 
-# Per-method position and trigger overrides (optional)
+# Per-method position, trigger, and expected result overrides (optional)
 # Each method can have its own line/col and trigger character.
 # Methods not listed here use the global line/col above.
 # Only list methods you want to override — omit the rest.
 # The trigger field is only used for textDocument/completion.
+#
+# The expect field defines the expected response for --verify mode.
+# When running `lsp-bench --verify`, responses are checked against
+# expect.file (URI suffix match) and expect.line (0-based line number).
+# Exits non-zero if any expectation fails.
 #
 # methods:
 #   textDocument/completion:
@@ -64,6 +69,16 @@ readme:
 #   textDocument/definition:
 #     line: 200
 #     col: 15
+#     expect:                    # expected result for --verify
+#       file: MyContract.sol     # response URI must end with this
+#       line: 42                 # response range.start.line must match
+#     didChange:
+#       - file: src/MyContract.v2.sol
+#         line: 201
+#         col: 15
+#         expect:                # per-snapshot expect (overrides method-level)
+#           file: MyContract.sol
+#           line: 42
 
 # Response output (default: 80)
 #   full     -> store full response, no truncation

@@ -12,6 +12,24 @@ use std::time::{Duration, Instant};
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
+/// Expected result for a goto-definition (or similar) response.
+///
+/// ```yaml
+/// expect:
+///   file: SafeCast.sol
+///   line: 39
+/// ```
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
+struct ExpectConfig {
+    /// Expected filename suffix (e.g. "SafeCast.sol"). Matches if the response
+    /// URI ends with this string.
+    #[serde(default)]
+    file: Option<String>,
+    /// Expected 0-based line number in the response.
+    #[serde(default)]
+    line: Option<u32>,
+}
+
 /// A file snapshot sent via didChange, with its own cursor position.
 ///
 /// ```yaml
@@ -19,6 +37,9 @@ use std::time::{Duration, Instant};
 ///   - file: src/libraries/Pool.v2.sol
 ///     line: 107
 ///     col: 15
+///     expect:
+///       file: SafeCast.sol
+///       line: 39
 /// ```
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct FileSnapshot {
@@ -28,6 +49,9 @@ struct FileSnapshot {
     line: u32,
     /// 0-based column for the benchmark request after this snapshot.
     col: u32,
+    /// Expected response (for --verify mode).
+    #[serde(default)]
+    expect: Option<ExpectConfig>,
 }
 
 /// Per-method configuration overrides.
@@ -58,6 +82,9 @@ struct MethodConfig {
     /// Trigger character (e.g. ".") — only used for textDocument/completion.
     #[serde(default)]
     trigger: Option<String>,
+    /// Expected response for the base request (no didChange). Used by --verify.
+    #[serde(default)]
+    expect: Option<ExpectConfig>,
     /// File snapshots sent sequentially via didChange. Each snapshot is one
     /// iteration: send content, run one request at that snapshot's line/col.
     #[serde(default, rename = "didChange")]
@@ -699,6 +726,92 @@ fn response_summary(resp: &Value, _max_chars: usize) -> Value {
     }
 }
 
+// ── Expectation checking ─────────────────────────────────────────────────────
+
+/// Check whether an LSP response matches the expected result.
+/// Returns Ok(()) on match, Err(message) on mismatch.
+fn check_expectation(resp: &Value, expect: &ExpectConfig) -> Result<(), String> {
+    // Extract result from response envelope
+    let result = resp
+        .get("result")
+        .or_else(|| resp.get("params"))
+        .unwrap_or(resp);
+
+    // Handle array responses (e.g. textDocument/definition can return Location[])
+    let location = if let Some(arr) = result.as_array() {
+        if arr.is_empty() {
+            return Err("response is empty array".to_string());
+        }
+        &arr[0]
+    } else if result.is_object() {
+        result
+    } else if result.is_null() {
+        return Err("response is null".to_string());
+    } else {
+        result
+    };
+
+    // Check file (URI ends with expected suffix)
+    if let Some(ref expected_file) = expect.file {
+        let uri = location
+            .get("targetUri")
+            .or_else(|| location.get("uri"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if !uri.ends_with(expected_file) {
+            return Err(format!(
+                "file: expected \"{}\" but got \"{}\"",
+                expected_file,
+                uri.rsplit('/').next().unwrap_or(uri)
+            ));
+        }
+    }
+
+    // Check line
+    if let Some(expected_line) = expect.line {
+        // Try targetRange first (definitionLink), then range (Location)
+        let range = location
+            .get("targetRange")
+            .or_else(|| location.get("range"));
+        let actual_line = range
+            .and_then(|r| r.get("start"))
+            .and_then(|s| s.get("line"))
+            .and_then(|l| l.as_u64())
+            .map(|l| l as u32);
+        match actual_line {
+            Some(line) if line == expected_line => {}
+            Some(line) => {
+                return Err(format!("line: expected {} but got {}", expected_line, line));
+            }
+            None => {
+                return Err(format!(
+                    "line: expected {} but response has no range",
+                    expected_line
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Result of verifying expectations across a benchmark run.
+struct VerifyTally {
+    passed: usize,
+    failed: usize,
+    skipped: usize, // no expect field
+}
+
+impl VerifyTally {
+    fn new() -> Self {
+        Self {
+            passed: 0,
+            failed: 0,
+            skipped: 0,
+        }
+    }
+}
+
 // ── Memory measurement ──────────────────────────────────────────────────────
 
 /// Get the resident set size (RSS) of a process in kilobytes.
@@ -1040,6 +1153,7 @@ struct ResolvedSnapshot {
     path: PathBuf,
     line: u32,
     col: u32,
+    expect: Option<ExpectConfig>,
 }
 
 /// Benchmark an LSP method across sequential file snapshots on a single server.
@@ -1357,6 +1471,10 @@ struct Cli {
     /// Config file path
     #[arg(short, long, default_value = "benchmark.yaml")]
     config: String,
+
+    /// Verify responses match `expect` fields in config. Exits non-zero on mismatch.
+    #[arg(long)]
+    verify: bool,
 }
 
 #[derive(Subcommand)]
@@ -1398,6 +1516,7 @@ fn main() {
 
     // Load config
     let mut cfg = load_config(&cli.config);
+    let verify = cli.verify;
 
     let n = cfg.iterations;
     let w = cfg.warmup;
@@ -1504,6 +1623,7 @@ fn main() {
     let total = benchmarks.len();
     let mut num = 0usize;
     let mut all_results: Vec<(&str, Vec<BenchRow>)> = Vec::new();
+    let mut tally = VerifyTally::new();
 
     // Resolve line/col for a given method, falling back to global defaults.
     let pos_for = |method: &str| -> (u32, u32) {
@@ -1766,6 +1886,7 @@ fn main() {
                             path: cwd.join(&s.file),
                             line: s.line,
                             col: s.col,
+                            expect: s.expect.clone(),
                         })
                         .collect()
                 })
@@ -1810,6 +1931,85 @@ fn main() {
                     )
                 })
             };
+
+            // ── Verify expectations ──────────────────────────────────────
+            if verify {
+                let method_expect = methods.get(*method).and_then(|m| m.expect.as_ref());
+                for row in &rows {
+                    if row.kind != 0 {
+                        continue; // skip failed/invalid servers
+                    }
+                    if !snapshots.is_empty() {
+                        // Snapshot mode: 1:1 mapping between iterations and snapshots
+                        for (i, ((_ms, resp), snap)) in
+                            row.iterations.iter().zip(snapshots.iter()).enumerate()
+                        {
+                            let snap_name =
+                                snap.path.file_name().unwrap_or_default().to_string_lossy();
+                            // Per-snapshot expect takes precedence, then method-level
+                            let expect = snap.expect.as_ref().or(method_expect);
+                            match expect {
+                                Some(exp) => match check_expectation(resp, exp) {
+                                    Ok(()) => {
+                                        tally.passed += 1;
+                                        eprintln!(
+                                            "  {} [{}] {}",
+                                            style("✓").green().bold(),
+                                            i + 1,
+                                            snap_name,
+                                        );
+                                    }
+                                    Err(msg) => {
+                                        tally.failed += 1;
+                                        eprintln!(
+                                            "  {} [{}] {} — {}",
+                                            style("✗").red().bold(),
+                                            i + 1,
+                                            snap_name,
+                                            msg,
+                                        );
+                                    }
+                                },
+                                None => {
+                                    tally.skipped += 1;
+                                }
+                            }
+                        }
+                    } else {
+                        // Non-snapshot mode: check method-level expect against each iteration
+                        match method_expect {
+                            Some(exp) => {
+                                // Just check the first iteration (all should be the same)
+                                if let Some((_ms, resp)) = row.iterations.first() {
+                                    match check_expectation(resp, exp) {
+                                        Ok(()) => {
+                                            tally.passed += 1;
+                                            eprintln!(
+                                                "  {} {}",
+                                                style("✓").green().bold(),
+                                                row.label,
+                                            );
+                                        }
+                                        Err(msg) => {
+                                            tally.failed += 1;
+                                            eprintln!(
+                                                "  {} {} — {}",
+                                                style("✗").red().bold(),
+                                                row.label,
+                                                msg,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            None => {
+                                tally.skipped += 1;
+                            }
+                        }
+                    }
+                }
+            }
+
             all_results.push((method, rows));
             let p = save_json(
                 &all_results,
@@ -1892,6 +2092,34 @@ fn main() {
                     e
                 ),
             }
+        }
+    }
+
+    // ── Verify summary ────────────────────────────────────────────────
+    if verify {
+        eprintln!();
+        let total_checks = tally.passed + tally.failed;
+        if total_checks == 0 && tally.skipped > 0 {
+            eprintln!(
+                "  {} no expect fields found in config (skipped {})",
+                style("warn").yellow(),
+                tally.skipped
+            );
+        } else if tally.failed == 0 {
+            eprintln!(
+                "  {} {}/{} expectations passed",
+                style("verify").green().bold(),
+                tally.passed,
+                total_checks
+            );
+        } else {
+            eprintln!(
+                "  {} {}/{} expectations failed",
+                style("verify").red().bold(),
+                tally.failed,
+                total_checks
+            );
+            std::process::exit(1);
         }
     }
 }
