@@ -628,8 +628,14 @@ fn is_valid_response(resp: &Value) -> bool {
             if r.is_null() {
                 return false;
             }
+            // Direct array result (e.g. definition, references) — must be non-empty
             if let Some(arr) = r.as_array() {
                 return !arr.is_empty();
+            }
+            // Completion response: { isIncomplete: bool, items: [...] }
+            // An empty items array means no completions were returned
+            if let Some(items) = r.get("items").and_then(|v| v.as_array()) {
+                return !items.is_empty();
             }
             true
         }
@@ -952,26 +958,37 @@ fn bench_lsp_method(
     let mut iterations = Vec::new();
     for i in 0..(w + n) {
         on_progress(&iter_msg(i, w, n));
-        let start = Instant::now();
-        if let Err(e) = c.send(method, params_fn(method, &file_uri)) {
-            return BenchResult::Fail { error: e, rss_kb };
-        }
-        match c.read_response(timeout) {
-            Ok(resp) => {
-                let ms = start.elapsed().as_secs_f64() * 1000.0;
-                on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
-                if i >= w {
-                    if !is_valid_response(&resp) {
+
+        // Wait for a valid response, re-sending if the server returns an incomplete result.
+        // Some servers build caches asynchronously, so early responses may be empty
+        // (e.g. completions with isIncomplete: true, items: []).
+        let deadline = Instant::now() + timeout;
+        loop {
+            let start = Instant::now();
+            if let Err(e) = c.send(method, params_fn(method, &file_uri)) {
+                return BenchResult::Fail { error: e, rss_kb };
+            }
+            match c.read_response(timeout) {
+                Ok(resp) => {
+                    let ms = start.elapsed().as_secs_f64() * 1000.0;
+                    if is_valid_response(&resp) {
+                        on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
+                        if i >= w {
+                            let summary = response_summary(&resp, response_limit);
+                            iterations.push((ms, summary));
+                        }
+                        break;
+                    }
+                    // Not ready yet — re-send if time remains
+                    if Instant::now() >= deadline {
                         return BenchResult::Invalid {
                             first_response: resp,
                             rss_kb,
                         };
                     }
-                    let summary = response_summary(&resp, response_limit);
-                    iterations.push((ms, summary));
                 }
+                Err(e) => return BenchResult::Fail { error: e, rss_kb },
             }
-            Err(e) => return BenchResult::Fail { error: e, rss_kb },
         }
     }
     c.kill();
