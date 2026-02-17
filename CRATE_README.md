@@ -204,6 +204,10 @@ Responses are stored as native JSON values (objects, arrays, strings, or null). 
 - RSS memory sampled after indexing
 - Warmup iterations discarded from measurements
 
+## Attribution
+
+Inspired by [@libkakashi](https://github.com/libkakashi) and his [lsp-bench](https://github.com/libkakashi/lsp-bench) — thanks for the inspiration to build this benchmark framework.
+
 ## License
 
 MIT

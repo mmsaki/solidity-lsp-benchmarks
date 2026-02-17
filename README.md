@@ -219,6 +219,10 @@ Example delta output:
 
 See [DOCS.md](DOCS.md) for full methodology details.
 
+## Attribution
+
+Inspired by [@libkakashi](https://github.com/libkakashi) and his [lsp-bench](https://github.com/libkakashi/lsp-bench) — thanks for the inspiration to build this benchmark framework.
+
 ## License
 
 MIT
