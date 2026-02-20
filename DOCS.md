@@ -174,8 +174,11 @@ methods:
 | `col` | Override column for this method (falls back to global `col`) |
 | `trigger` | Trigger character for completion (e.g. `"."`) — only used by `textDocument/completion` |
 | `newName` | New name for `textDocument/rename` (defaults to `"__lsp_bench_rename__"`) |
+| `start_line` | Start line for range-based methods like `textDocument/semanticTokens/range` |
+| `start_col` | Start column for range-based methods |
 | `expect` | Expected response for `--verify` mode (see [Verification](#verification) below) |
 | `didChange` | List of file snapshots to send via `textDocument/didChange` before benchmarking (see below) |
+| `didOpen` | List of additional files to open sequentially, measuring cross-file effects (see below) |
 
 You can override just one field — for example, `trigger: "."` alone uses the global position but adds the trigger character. An empty entry like `textDocument/hover: {}` is the same as not listing it at all.
 
@@ -228,6 +231,49 @@ Pool.sol.snapshot1    ← larger edit (e.g. lines inserted at top)
 ```
 
 When `didChange` is not set, the benchmark runs normally with warmup + iterations of the same request.
+
+### didOpen chain
+
+The `didOpen` field benchmarks how opening additional files affects LSP responses on your primary file. This is useful for measuring cross-file features like forward references — as more files are opened, the server discovers more symbols and the response grows.
+
+```yaml
+methods:
+  textDocument/references:
+    line: 6
+    col: 5
+    expect:
+      minCount: 10
+    didOpen:
+      - file: src/PoolManager.sol
+        expect:
+          minCount: 30
+      - file: src/PoolSwapRouter.sol
+        expect:
+          minCount: 50
+```
+
+| Field | Description |
+|-------|-------------|
+| `file` | Path to the file to open (relative to project) |
+| `line` | Optional line override for the benchmark request after this file is opened |
+| `col` | Optional column override for the benchmark request after this file is opened |
+| `expect` | Expected response for this step (overrides method-level `expect` for `--verify`) |
+
+**How it works:**
+
+1. The primary file (`file` in the top-level config) is opened via `textDocument/didOpen`
+2. The server indexes it and publishes diagnostics
+3. A baseline benchmark request is sent at the method's `line`/`col` (iteration 0)
+4. For each didOpen step in order: the file is opened via `textDocument/didOpen` → the tool waits for the server to publish diagnostics on the new file → then re-sends the benchmark request on the **original** file
+5. Each step produces one iteration in the results
+
+**When to use this:**
+
+- Measuring how reference counts grow as the server discovers more files
+- Testing cross-file goto definition or hover after imports are resolved
+- Benchmarking incremental indexing — how long does re-analysis take after opening a new file
+
+**Difference from didChange:** `didChange` sends edited content for the *same* file (dirty buffers). `didOpen` opens *additional* files to expand the server's knowledge of the project.
 
 ### Verification
 
@@ -282,14 +328,16 @@ On failure, the mismatch is reported and the process exits with code 1:
 |-------|-------------|
 | `file` | Expected filename suffix. The response URI must end with this string (e.g. `SafeCast.sol`). |
 | `line` | Expected 0-based line number. Checked against `range.start.line` (Location) or `targetRange.start.line` (LocationLink). |
+| `count` | Expected exact count. The response array length must equal this value. Useful for `textDocument/references`, `textDocument/documentSymbol`, etc. |
+| `minCount` | Expected minimum count. The response array length must be at least this value. Use when the exact count may vary but you want to assert a lower bound. |
 
-Both fields are optional — you can check just the file, just the line, or both.
+All fields are optional — you can check any combination of file, line, count, and minCount.
 
 **Precedence:** Per-snapshot `expect` overrides the method-level `expect`. If neither is set, that snapshot/iteration is skipped (not counted as pass or fail).
 
 **Without didChange:** For non-snapshot benchmarks, the method-level `expect` is checked against the first iteration's response.
 
-Valid benchmark names: `all`, `initialize`, `textDocument/diagnostic`, `textDocument/definition`, `textDocument/declaration`, `textDocument/typeDefinition`, `textDocument/implementation`, `textDocument/hover`, `textDocument/references`, `textDocument/completion`, `textDocument/signatureHelp`, `textDocument/rename`, `textDocument/prepareRename`, `textDocument/documentSymbol`, `textDocument/documentLink`, `textDocument/formatting`, `textDocument/foldingRange`, `textDocument/selectionRange`, `textDocument/codeLens`, `textDocument/inlayHint`, `textDocument/semanticTokens/full`, `textDocument/documentColor`, `workspace/symbol`.
+Valid benchmark names: `all`, `initialize`, `textDocument/diagnostic`, `textDocument/definition`, `textDocument/declaration`, `textDocument/typeDefinition`, `textDocument/implementation`, `textDocument/hover`, `textDocument/references`, `textDocument/completion`, `textDocument/signatureHelp`, `textDocument/rename`, `textDocument/prepareRename`, `textDocument/documentSymbol`, `textDocument/documentLink`, `textDocument/formatting`, `textDocument/foldingRange`, `textDocument/selectionRange`, `textDocument/codeLens`, `textDocument/inlayHint`, `textDocument/semanticTokens/full`, `textDocument/semanticTokens/range`, `textDocument/semanticTokens/full/delta`, `textDocument/documentColor`, `workspace/symbol`.
 
 ### Response truncation
 
@@ -483,6 +531,38 @@ servers:
 ```
 
 Here `completion` uses line 21 col 9 with a `.` trigger, `hover` uses line 10 col 15, and `definition` uses the global line 21 col 8.
+
+**Forward references (didOpen)** -- measure how reference counts grow as more files are opened:
+
+```yaml
+project: v4-core
+file: src/types/Currency.sol
+line: 6
+col: 5
+iterations: 1
+warmup: 0
+response: full
+
+benchmarks:
+  - textDocument/references
+
+methods:
+  textDocument/references:
+    line: 6
+    col: 5
+    expect:
+      minCount: 10
+    didOpen:
+      - file: src/PoolManager.sol
+        expect:
+          minCount: 30
+
+servers:
+  - label: mmsaki
+    cmd: solidity-language-server
+```
+
+Here `Currency.sol` is opened first and a baseline `textDocument/references` request is sent (iteration 0). Then `PoolManager.sol` is opened — the server discovers new references to the symbol — and the request is re-sent on the original file (iteration 1). The `minCount` expectations verify that the reference count grows as expected.
 
 **didChange snapshots** -- benchmark goto definition against edited buffer states:
 
