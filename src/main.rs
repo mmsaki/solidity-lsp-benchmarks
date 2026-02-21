@@ -339,6 +339,8 @@ struct Config {
     output: String,
     #[serde(default)]
     benchmarks: Vec<String>,
+    #[serde(default)]
+    exclude: Vec<String>,
     /// Output path for the generated report. Omit to skip report generation.
     #[serde(default)]
     report: Option<String>,
@@ -2597,12 +2599,21 @@ fn main() {
     let partial_dir = format!("{}/partial", output_dir);
 
     // Resolve which benchmarks to run from config
-    let benchmarks: Vec<&str> =
-        if cfg.benchmarks.is_empty() || cfg.benchmarks.iter().any(|c| c == "all") {
-            ALL_BENCHMARKS.to_vec()
+    let benchmarks: Vec<&str> = {
+        let base: Vec<&str> =
+            if cfg.benchmarks.is_empty() || cfg.benchmarks.iter().any(|c| c == "all") {
+                ALL_BENCHMARKS.to_vec()
+            } else {
+                cfg.benchmarks.iter().map(|s| s.as_str()).collect()
+            };
+        if cfg.exclude.is_empty() {
+            base
         } else {
-            cfg.benchmarks.iter().map(|s| s.as_str()).collect()
-        };
+            base.into_iter()
+                .filter(|b| !cfg.exclude.iter().any(|e| e == b))
+                .collect()
+        }
+    };
 
     for b in &benchmarks {
         if !ALL_BENCHMARKS.contains(b) {
