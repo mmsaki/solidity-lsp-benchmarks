@@ -26,6 +26,10 @@ path = "src/gen_analysis.rs"
 name = "gen-delta"
 path = "src/gen_delta.rs"
 
+[[bin]]
+name = "gen-competition"
+path = "src/gen_competition.rs"
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

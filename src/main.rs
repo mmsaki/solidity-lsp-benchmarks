@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
 // ── Config ──────────────────────────────────────────────────────────────────
@@ -297,13 +297,18 @@ struct LspClient {
     rx: mpsc::Receiver<Value>,
     writer: std::process::ChildStdin,
     id: i64,
+    logs: Arc<Mutex<Vec<String>>>,
 }
 
 struct DiagnosticsInfo {
     message: Value,
 }
 
-fn reader_thread(stdout: std::process::ChildStdout, tx: mpsc::Sender<Value>) {
+fn reader_thread(
+    stdout: std::process::ChildStdout,
+    tx: mpsc::Sender<Value>,
+    logs: Arc<Mutex<Vec<String>>>,
+) {
     let mut reader = BufReader::new(stdout);
     loop {
         let mut content_length: usize = 0;
@@ -342,6 +347,18 @@ fn reader_thread(stdout: std::process::ChildStdout, tx: mpsc::Sender<Value>) {
             return;
         }
         if let Ok(msg) = serde_json::from_slice::<Value>(&body) {
+            // Capture window/logMessage notifications
+            if msg.get("method").and_then(|m| m.as_str()) == Some("window/logMessage") {
+                if let Some(text) = msg
+                    .get("params")
+                    .and_then(|p| p.get("message"))
+                    .and_then(|m| m.as_str())
+                {
+                    if let Ok(mut l) = logs.lock() {
+                        l.push(text.to_string());
+                    }
+                }
+            }
             if tx.send(msg).is_err() {
                 return;
             }
@@ -369,12 +386,15 @@ impl LspClient {
         let writer = child.stdin.take().unwrap();
         let stdout = child.stdout.take().unwrap();
         let (tx, rx) = mpsc::channel();
-        std::thread::spawn(move || reader_thread(stdout, tx));
+        let logs = Arc::new(Mutex::new(Vec::new()));
+        let logs_clone = logs.clone();
+        std::thread::spawn(move || reader_thread(stdout, tx, logs_clone));
         Ok(Self {
             child,
             rx,
             writer,
             id: 1,
+            logs,
         })
     }
 
@@ -1219,6 +1239,12 @@ fn bench_lsp_method_cold(
                     error: e,
                     rss_kb: rss,
                 };
+            }
+        }
+        // Print server logs for this iteration
+        if let Ok(logs) = c.logs.lock() {
+            for log in logs.iter() {
+                eprintln!("    {}", style(log).dim());
             }
         }
         c.kill();
@@ -2916,9 +2942,10 @@ fn main() {
                 "readme" => ("gen-readme", vec!["--quiet", &path, report_out]),
                 "analysis" => ("gen-analysis", vec!["--quiet", &path, "-o", report_out]),
                 "delta" => ("gen-delta", vec!["--quiet", &path, "-o", report_out]),
+                "competition" => ("gen-competition", vec!["--quiet", &path, "-o", report_out]),
                 other => {
                     eprintln!(
-                        "  {} unknown report_style '{}' (expected: delta, readme, analysis)",
+                        "  {} unknown report_style '{}' (expected: delta, readme, analysis, competition)",
                         style("warn").yellow(),
                         other
                     );
