@@ -1074,6 +1074,126 @@ fn truncate(s: &str, max: usize) -> String {
     }
 }
 
+/// Format a JSON value as a compact JS-inspect style string.
+///
+/// Arrays longer than `max` show first `max` items then `... N more`:
+///   `Array(188) [{ label: "Shop", kind: 7 }, { label: "revert", kind: 1 }, ... 186 more]`
+///
+/// Strings longer than 80 chars are truncated.
+/// Nested objects are recursively compacted.
+fn compact_json(value: &Value, max: usize) -> String {
+    match value {
+        Value::Null => "null".into(),
+        Value::Bool(b) => b.to_string(),
+        Value::Number(n) => n.to_string(),
+        Value::String(s) => {
+            if s.len() > 80 {
+                format!("\"{}...\"", &s[..77])
+            } else {
+                format!("\"{}\"", s)
+            }
+        }
+        Value::Array(arr) => {
+            if arr.is_empty() {
+                return "[]".into();
+            }
+            let prefix = format!("Array({}) ", arr.len());
+            let items: Vec<String> = arr.iter().take(max).map(|v| compact_json(v, max)).collect();
+            let mut out = format!("{}[{}", prefix, items.join(", "));
+            if arr.len() > max {
+                out.push_str(&format!(", ... {} more", arr.len() - max));
+            }
+            out.push(']');
+            out
+        }
+        Value::Object(obj) => {
+            if obj.is_empty() {
+                return "{}".into();
+            }
+            let pairs: Vec<String> = obj
+                .iter()
+                .map(|(k, v)| format!("{}: {}", k, compact_json(v, max)))
+                .collect();
+            format!("{{ {} }}", pairs.join(", "))
+        }
+    }
+}
+
+/// Truncate a JSON value for pretty-printing in `<details>` blocks.
+/// Arrays longer than `max` keep first `max` items and append a string note.
+/// Output is still valid JSON (for syntax highlighting) just shorter.
+fn truncate_json(value: &Value, max: usize) -> Value {
+    match value {
+        Value::Array(arr) => {
+            if arr.len() <= max {
+                Value::Array(arr.iter().map(|v| truncate_json(v, max)).collect())
+            } else {
+                let mut items: Vec<Value> = arr
+                    .iter()
+                    .take(max)
+                    .map(|v| truncate_json(v, max))
+                    .collect();
+                items.push(Value::String(format!(
+                    "... {} more ({} total)",
+                    arr.len() - max,
+                    arr.len()
+                )));
+                Value::Array(items)
+            }
+        }
+        Value::Object(obj) => {
+            let mut result = serde_json::Map::new();
+            for (k, v) in obj {
+                result.insert(k.clone(), truncate_json(v, max));
+            }
+            Value::Object(result)
+        }
+        other => other.clone(),
+    }
+}
+
+/// Classify a server response for display in the session log.
+/// Returns (label, is_real_content) where label is a short tag.
+fn classify_response(bench_name: &str, srv: &Value) -> (&'static str, bool) {
+    let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    if status != "ok" {
+        let response = parse_response(srv);
+        if let Some(err) = response.get("error").and_then(|v| v.as_str()) {
+            if err.contains("Unhandled method")
+                || err.contains("Method not found")
+                || err.contains("Unknown method")
+                || err.contains("unsupported")
+            {
+                return ("unsupported", false);
+            }
+            return ("error", false);
+        }
+        return ("error", false);
+    }
+
+    let response = parse_response(srv);
+    if response.get("error").is_some() {
+        return ("error", false);
+    }
+    if response.is_null() {
+        return ("null", false);
+    }
+    if response_is_empty(&response) {
+        return ("empty", false);
+    }
+
+    let method = bench_name.to_lowercase();
+    if (method.contains("definition")
+        || method.contains("declaration")
+        || method.contains("reference"))
+        && response.as_array().map_or(false, |a| a.is_empty())
+    {
+        return ("empty", false);
+    }
+
+    ("content", true)
+}
+
 /// Collect server names from the first benchmark entry.
 fn collect_server_names(benchmarks: &[Value]) -> Vec<&str> {
     benchmarks[0]
@@ -1137,8 +1257,7 @@ fn generate_session_txt(data: &Value) -> String {
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
 
-    l.push(format!("Solidity LSP Session — {} / {}", project, file));
-    l.push("=".repeat(60));
+    l.push(format!("# {} / {}", project, file));
     l.push(String::new());
 
     let benchmarks = match data.get("benchmarks").and_then(|b| b.as_array()) {
@@ -1153,80 +1272,66 @@ fn generate_session_txt(data: &Value) -> String {
             None => continue,
         };
 
-        l.push(format!("── {} ──", bench_name));
+        // Collect metrics from first server for the heading
+        let srv = &servers[0];
+        let p95 = srv.get("p95_ms").and_then(|v| v.as_f64());
+        let rss = srv
+            .get("rss_kb")
+            .and_then(|v| v.as_u64())
+            .filter(|&kb| kb > 0);
+        let mut metrics: Vec<String> = Vec::new();
+        if let Some(ms) = p95 {
+            metrics.push(format_latency(ms));
+        }
+        if let Some(kb) = rss {
+            metrics.push(format_memory(kb));
+        }
+        let metrics_str = if metrics.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", metrics.join(", "))
+        };
+
+        l.push(format!("── {}{} ──", bench_name, metrics_str));
         l.push(String::new());
 
-        // Show the input request if available
+        // Request: full JSON-RPC (copy-pasteable)
         if let Some(input) = bench.get("input").and_then(|v| v.as_str()) {
-            l.push(format!("→ INPUT"));
-            l.push(format!("  {}", input));
-            l.push(String::new());
-        } else {
-            // Reconstruct basic input info from settings
-            let line = settings
-                .and_then(|s| s.get("line"))
-                .and_then(|v| v.as_u64());
-            let col = settings.and_then(|s| s.get("col")).and_then(|v| v.as_u64());
-            if let (Some(line), Some(col)) = (line, col) {
-                l.push(format!("→ {} at {}:{}:{}", bench_name, file, line, col));
+            if let Ok(parsed) = serde_json::from_str::<Value>(input) {
+                l.push(serde_json::to_string_pretty(&parsed).unwrap_or_else(|_| input.to_string()));
             } else {
-                l.push(format!("→ {} on {}", bench_name, file));
+                l.push(input.to_string());
             }
             l.push(String::new());
         }
 
-        // Show each server's response
+        // Response: compact one-liner per server
         for srv in servers {
             let name = srv.get("server").and_then(|v| v.as_str()).unwrap_or("?");
             let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
-            let p95 = srv.get("p95_ms").and_then(|v| v.as_f64());
-            let rss = srv
-                .get("rss_kb")
-                .and_then(|v| v.as_u64())
-                .filter(|&kb| kb > 0);
 
-            // Build the server header with metrics
-            let mut header = format!("← {}", name);
-            let mut metrics: Vec<String> = Vec::new();
-            if let Some(ms) = p95 {
-                metrics.push(format_latency(ms));
-            }
-            if let Some(kb) = rss {
-                metrics.push(format_memory(kb));
-            }
-            if !metrics.is_empty() {
-                header.push_str(&format!(" ({})", metrics.join(", ")));
-            }
-
+            let (tag, _) = classify_response(bench_name, srv);
             match status {
                 "ok" => {
-                    let summary = human_result(bench_name, srv);
-                    l.push(header);
-                    l.push(format!("  {}", summary));
-
-                    // Show the raw response (pretty-printed, indented)
                     let response = parse_response(srv);
-                    if !response.is_null() {
-                        let pretty = serde_json::to_string_pretty(&response).unwrap_or_default();
-                        for line in pretty.lines().take(20) {
-                            l.push(format!("  {}", line));
-                        }
-                        let total_lines = pretty.lines().count();
-                        if total_lines > 20 {
-                            l.push(format!("  ... ({} more lines)", total_lines - 20));
-                        }
+                    let summary = human_result(bench_name, srv);
+                    if response.is_null() || response_is_empty(&response) {
+                        l.push(format!("← {} [{}] {}", name, tag, summary));
+                    } else {
+                        let compact = compact_json(&response, 3);
+                        let compact_short = if compact.len() > 200 {
+                            format!("{}...", &compact[..197])
+                        } else {
+                            compact
+                        };
+                        l.push(format!("← {} [{}] {}", name, tag, compact_short));
                     }
-                }
-                "invalid" => {
-                    let label = classify_error_result(srv);
-                    l.push(format!("{} — {}", header, label));
                 }
                 _ => {
                     let label = classify_error_result(srv);
-                    l.push(format!("{} — {}", header, label));
+                    l.push(format!("← {} [{}] {}", name, tag, label));
                 }
             }
-            l.push(String::new());
         }
 
         l.push(String::new());
@@ -1321,23 +1426,37 @@ fn generate_session_md(data: &Value) -> String {
                 format!(" ({})", metrics.join(", "))
             };
 
+            let (tag, has_content) = classify_response(bench_name, srv);
             match status {
                 "ok" => {
                     let summary = human_result(bench_name, srv);
                     l.push(format!("**{}**{} — {}", name, metrics_str, summary));
 
                     let response = parse_response(srv);
-                    if !response.is_null() {
+                    if !response.is_null() && has_content {
+                        let compact = compact_json(&response, 3);
+                        let compact_short = if compact.len() > 120 {
+                            format!("{}...", &compact[..117])
+                        } else {
+                            compact
+                        };
+                        let truncated = truncate_json(&response, 5);
+                        let pretty =
+                            serde_json::to_string_pretty(&truncated).unwrap_or_else(|_| "?".into());
                         l.push(String::new());
                         l.push("<details>".into());
-                        l.push("<summary>Raw response</summary>".into());
+                        l.push(format!(
+                            "<summary>Summary: <code>{}</code></summary>",
+                            compact_short
+                        ));
                         l.push(String::new());
                         l.push("```json".into());
-                        l.push(
-                            serde_json::to_string_pretty(&response).unwrap_or_else(|_| "?".into()),
-                        );
+                        l.push(pretty);
                         l.push("```".into());
                         l.push("</details>".into());
+                    } else if !response.is_null() {
+                        // Error / empty — show compact inline
+                        l.push(format!("\n`[{}]` `{}`", tag, compact_json(&response, 3)));
                     }
                 }
                 _ => {

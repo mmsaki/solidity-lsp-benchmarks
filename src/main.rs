@@ -3339,12 +3339,19 @@ fn main() {
 
         // Generate report if configured
         if let Some(ref report_out) = report_path {
+            // Resolve report path relative to output_dir so session files
+            // land alongside results.json (not in the CWD)
+            let resolved_report = if std::path::Path::new(report_out.as_str()).is_relative() {
+                format!("{}/{}", output_dir, report_out)
+            } else {
+                report_out.clone()
+            };
             let exe = std::env::current_exe().unwrap();
             let bin_dir = exe.parent().unwrap();
             let bin_name = "gen-report";
-            let args: Vec<&str> = vec!["--quiet", "--session", &path, "-o", report_out];
+            let args: Vec<&str> = vec!["--quiet", "--session", &path, "-o", &resolved_report];
             let bin = bin_dir.join(bin_name);
-            eprintln!("  {} -> {}", style("report").dim(), report_out);
+            eprintln!("  {} -> {}", style("report").dim(), resolved_report);
             match std::process::Command::new(&bin).args(&args).status() {
                 Ok(s) if s.success() => {}
                 Ok(s) => eprintln!(
