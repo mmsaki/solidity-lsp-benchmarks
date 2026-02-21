@@ -1,13 +1,11 @@
 # Documentation
 
-This project produces four binaries:
+This project produces two binaries:
 
 | Binary | Source | Purpose |
 |--------|--------|---------|
-| `lsp-bench` | `src/main.rs` | Run LSP benchmarks, produce JSON snapshots |
-| `gen-readme` | `src/gen_readme.rs` | Read a JSON snapshot, generate `README.md` |
-| `gen-analysis` | `src/gen_analysis.rs` | Read a JSON snapshot, generate analysis report |
-| `gen-delta` | `src/gen_delta.rs` | Read a JSON snapshot, generate compact delta comparison table |
+| `lsp-bench` | `src/main.rs` | Run LSP benchmarks, produce JSON results |
+| `gen-report` | `src/gen_report.rs` | Generate competition tables, session logs from results |
 
 ## Quick Start
 
@@ -24,10 +22,10 @@ Edit `benchmark.yaml` to add your servers and choose which benchmarks to run, th
 ./target/release/lsp-bench            # run benchmarks (generates README if configured)
 ```
 
-To generate a README manually from a specific JSON snapshot:
+To generate a report manually from a JSON result:
 
 ```sh
-./target/release/gen-readme benchmarks/2026-02-13T01-45-26Z.json
+./target/release/gen-report benchmarks/v4-core/results.json --session
 ```
 
 The generated config uses `examples/Counter.sol` (included in the repo) as the default benchmark target -- a small contract with NatSpec comments and intentional unused variables to trigger diagnostics.
@@ -90,8 +88,7 @@ benchmarks:
   - all
 
 # Generate a report after benchmarks (omit to skip)
-# report: REPORT.md
-# report_style: delta    # delta (default), readme, or analysis
+# report: README.md
 
 # LSP servers to benchmark
 servers:
@@ -123,7 +120,6 @@ servers:
 | `output` | no | `benchmarks` | Directory for JSON result files |
 | `benchmarks` | no | all | List of benchmarks to run (see below) |
 | `report` | no | -- | Output path for the generated report (omit to skip report generation) |
-| `report_style` | no | `delta` | Report format: `delta`, `readme`, or `analysis` |
 | `response` | no | `80` | Response output: `full` (no truncation) or a number (truncate to N chars) |
 | `methods` | no | -- | Per-method position and trigger overrides (see below) |
 | `servers` | yes | -- | List of LSP servers to benchmark |
@@ -527,14 +523,14 @@ servers:
     args: ["--lsp"]
 ```
 
-**Per-commit comparison** -- benchmark two branches of the same server with a delta table:
+**Per-commit comparison** -- benchmark two branches of the same server:
 
 ```yaml
 project: examples
 file: Counter.sol
 line: 21
 col: 8
-report: DELTA.md
+report: README.md
 servers:
   - label: baseline
     cmd: solidity-language-server
@@ -833,102 +829,46 @@ This means even servers that timeout or crash will have their memory usage recor
 
 The value is stored as `rss_kb` (kilobytes) in the JSON output. Both `gen-readme` and `gen-analysis` display it in megabytes.
 
-## Generate README
+## Generate Report
 
-After running benchmarks, generate the README from JSON data:
-
-```sh
-./target/release/gen-readme benchmarks/2026-02-13T01-45-26Z.json              # write to README.md, print to stdout
-./target/release/gen-readme benchmarks/2026-02-13T01-45-26Z.json results.md   # custom output path
-./target/release/gen-readme benchmarks/snapshot.json -q                        # write file only (quiet)
-./target/release/gen-readme --help                                             # show help
-```
-
-By default, `gen-readme` prints the generated README to stdout and writes the file. Use `-q` / `--quiet` to suppress stdout output.
-
-To auto-generate after benchmarks, set `report` and `report_style: readme` in your config.
-
-## Generate Analysis
-
-Generate a detailed analysis report from benchmark JSON:
+Generate a competition report and session logs from benchmark results:
 
 ```sh
-./target/release/gen-analysis benchmarks/v4-core/snapshot.json                 # write ANALYSIS.md, print to stdout
-./target/release/gen-analysis benchmarks/v4-core/snapshot.json report.md       # custom output path
-./target/release/gen-analysis benchmarks/v4-core/snapshot.json --base mmsaki   # head-to-head from mmsaki's perspective
-./target/release/gen-analysis benchmarks/v4-core/snapshot.json -q              # write file only (quiet)
-./target/release/gen-analysis --help                                           # show help
+gen-report benchmarks/v4-core/results.json                     # write README.md, print to stdout
+gen-report benchmarks/v4-core/results.json -o report.md        # custom output path
+gen-report benchmarks/v4-core/results.json --session           # also generate session.txt and session.md
+gen-report benchmarks/v4-core/results.json -q                  # write file only (quiet)
+gen-report --help                                              # show help
 ```
 
-The analysis report is organized per-feature. Each LSP method gets its own section with all stats aggregated into a single table:
+The report includes:
+- **Summary table** — p95 latency per server per method, fastest bolded
+- **Scorecard** — win count per server
+- **Per-method detail tables** — p95, RSS, human-readable result, responded (✓/✗)
 
-- **Capability Matrix** -- Global overview: which servers succeed, fail, timeout, or crash on each benchmark, with a success rate summary.
-- **Per-feature sections** (one per benchmark, e.g. `initialize`, `textDocument/definition`, etc.) -- Each section contains a table with servers as rows and dynamic columns:
-  - **Status** -- ok, empty, no, timeout, crash
-  - **Mean** -- average latency
-  - **p50 / p95 / Spread / Spike** -- consistency metrics (shown when percentile data exists)
-  - **Min / Max / Range** -- per-iteration range (shown when iteration data exists)
-  - **Overhead** -- multiplier vs the fastest server (shown when >1 server succeeded)
-  - **RSS** -- memory usage in MB (shown when RSS data exists)
-  - **vs Base** -- head-to-head comparison against the base server (shown when >1 server)
-- **Peak Memory (RSS)** -- Global summary of peak RSS per server across all benchmarks. Only shown when RSS data is present.
+With `--session`, two additional files are generated in the same directory as the output:
+- **session.txt** — plain text input/output log with arrows (← →) showing what each server returned
+- **session.md** — markdown version with collapsible raw JSON responses for GitHub rendering
+
+To auto-generate after benchmarks, set `report: README.md` in your config.
 
 ### CLI options
 
 | Flag | Description |
 |------|-------------|
-| `-o, --output <path>` | Output file path (default: `ANALYSIS.md`) |
-| `--base <server>` | Server for head-to-head comparison (default: first server) |
-| `-q, --quiet` | Don't print analysis to stdout |
-
-## Generate Delta
-
-Generate a compact delta comparison table from benchmark JSON:
-
-```sh
-./target/release/gen-delta benchmarks/snapshot.json                            # compare first two servers, print to stdout
-./target/release/gen-delta benchmarks/snapshot.json -o DELTA.md                # write to file
-./target/release/gen-delta benchmarks/snapshot.json --base baseline --head pr  # choose which servers to compare
-./target/release/gen-delta benchmarks/snapshot.json -q -o DELTA.md             # write file only (quiet)
-./target/release/gen-delta --help                                              # show help
-```
-
-The delta table shows a side-by-side comparison of two servers with a relative speed column:
-
-```
-| Benchmark                | baseline | my-branch |       Delta |
-|--------------------------|----------|-----------|-------------|
-| initialize               |   4.05ms |    3.05ms | 1.3x faster |
-| textDocument/diagnostic  | 123.80ms |  124.10ms | 1.0x (tied) |
-| textDocument/hover       |   2.30ms |    2.21ms | 1.0x (tied) |
-| textDocument/definition  |   8.95ms |    8.90ms | 1.0x (tied) |
-| textDocument/documentSymbol |  8.72ms |   12.40ms | 1.4x slower |
-```
-
-Delta thresholds: differences within 5% are reported as "tied".
-
-By default, `gen-delta` compares the first two servers in the JSON. Use `--base` and `--head` to pick specific servers.
-
-Delta is the default `report_style`. To auto-generate after benchmarks, just set `report: DELTA.md` in your config.
-
-### CLI options
-
-| Flag | Description |
-|------|-------------|
-| `-o, --output <path>` | Output file path (default: stdout only) |
-| `--base <server>` | Baseline server (default: first server) |
-| `--head <server>` | Head server to compare (default: second server) |
-| `-q, --quiet` | Don't print table to stdout |
+| `-o, --output <path>` | Output file path (default: `README.md`) |
+| `--session` | Also generate session.txt and session.md |
+| `-q, --quiet` | Don't print report to stdout |
 
 ## Output
 
-`lsp-bench` produces JSON snapshots in the `output` directory (default `benchmarks/`):
+`lsp-bench` writes results to the `output` directory (default `benchmarks/`):
 
-- `<output>/<timestamp>.json` -- all runs go to the same directory
+- `<output>/results.json` -- overwritten on each run
 
 During a run, partial results are saved to `<output>/partial/` after each benchmark completes. These are cleaned up automatically when the full run finishes.
 
-If `report` is set in the config, the report is automatically generated from the final JSON snapshot using the chosen `report_style` (default: `delta`).
+If `report` is set in the config, the report is automatically generated from `results.json` along with session logs (session.txt, session.md).
 
 ### JSON structure
 
