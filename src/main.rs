@@ -1677,6 +1677,7 @@ fn bench_lsp_snapshots(
     cwd: &Path,
     target_file: &Path,
     method: &str,
+    params_fn: &dyn Fn(&str, &str) -> Value,
     snapshots: &[ResolvedSnapshot],
     index_timeout: Duration,
     timeout: Duration,
@@ -1748,11 +1749,14 @@ fn bench_lsp_snapshots(
             }
         }
 
-        // One request at this snapshot's position
-        let params = json!({
-            "textDocument": { "uri": &file_uri },
-            "position": { "line": snap.line, "character": snap.col },
-        });
+        // Build params from the method's params_fn, then override position
+        let mut params = params_fn(method, &file_uri);
+        if let Some(obj) = params.as_object_mut() {
+            obj.insert(
+                "position".to_string(),
+                json!({ "line": snap.line, "character": snap.col }),
+            );
+        }
         let start = Instant::now();
         let req_id = match c.send(method, params) {
             Ok(id) => id,
@@ -3143,6 +3147,7 @@ fn main() {
                         &cwd,
                         &bench_sol,
                         lsp_method,
+                        *params_fn,
                         &snapshots,
                         index_timeout,
                         timeout,
