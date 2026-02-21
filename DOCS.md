@@ -179,6 +179,7 @@ methods:
 | `expect` | Expected response for `--verify` mode (see [Verification](#verification) below) |
 | `didChange` | List of file snapshots to send via `textDocument/didChange` before benchmarking (see below) |
 | `didOpen` | List of additional files to open sequentially, measuring cross-file effects (see below) |
+| `cold` | Cold-start mode: spawn a fresh server per iteration, measure end-to-end from didOpen through the method response (see below) |
 
 You can override just one field — for example, `trigger: "."` alone uses the global position but adds the trigger character. An empty entry like `textDocument/hover: {}` is the same as not listing it at all.
 
@@ -274,6 +275,47 @@ methods:
 - Benchmarking incremental indexing — how long does re-analysis take after opening a new file
 
 **Difference from didChange:** `didChange` sends edited content for the *same* file (dirty buffers). `didOpen` opens *additional* files to expand the server's knowledge of the project.
+
+### Cold-start benchmarks
+
+The `cold` field measures the full end-to-end latency a user feels when opening a file and using an LSP feature for the first time. Unlike normal benchmarks (which wait for diagnostics before timing), cold-start benchmarks include compilation time in the measurement.
+
+```yaml
+methods:
+  textDocument/definition:
+    line: 91
+    col: 35
+    cold: true
+  textDocument/references:
+    line: 96
+    col: 24
+    cold: true
+```
+
+**How it works:**
+
+1. A fresh server is spawned for each iteration (no shared state between runs)
+2. The timer starts immediately before `textDocument/didOpen`
+3. The server compiles the file and publishes diagnostics
+4. The benchmark request is sent
+5. The timer stops when the response arrives
+
+The result captures: server startup + compilation + AST parsing + method response — the real user experience.
+
+**When to use this:**
+
+- Measuring cold-start performance across LSP server versions
+- Identifying compilation bottlenecks (solc vs forge, large import graphs)
+- Tracking regressions in time-to-first-response
+
+**Example output:**
+
+```
+[1/1] textDocument/definition
+  cold fresh server per iteration (cold start)
+```
+
+Cold-start times are typically seconds (not milliseconds) since they include compiler invocation. Normal `warmup` and `iterations` settings still apply — warmup iterations are discarded as usual.
 
 ### Verification
 
