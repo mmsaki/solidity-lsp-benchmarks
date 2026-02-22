@@ -2682,27 +2682,52 @@ fn main() {
         }
     }
 
-    let avail: Vec<&ServerConfig> = cfg
+    // Filter to available servers
+    cfg.servers.retain(|s| {
+        let ok = available(&s.cmd);
+        if !ok {
+            eprintln!("  {} {} -- not found", style("skip").yellow(), s.label);
+        }
+        ok
+    });
+
+    // Detect versions and resolve "latest" labels
+    eprintln!("\n{}", style("Detecting versions...").dim());
+    let mut detected_versions: Vec<String> = Vec::new();
+    for srv in &mut cfg.servers {
+        let ver = detect_version(&srv.cmd);
+        eprintln!("  {} = {}", style(&srv.label).bold(), ver);
+
+        // Replace "latest" with the actual version in the label and link
+        if srv.label.ends_with(" latest") {
+            let base = srv.label.trim_end_matches(" latest");
+            srv.label = base.to_string();
+            if !srv.link.is_empty() && !ver.is_empty() {
+                // Extract semver from version string (e.g. "solidity-language-server 0.1.24+commit..." → "0.1.24")
+                let semver = ver
+                    .split_whitespace()
+                    .last()
+                    .unwrap_or(&ver)
+                    .split('+')
+                    .next()
+                    .unwrap_or(&ver);
+                srv.link = format!(
+                    "{}/releases/tag/v{}",
+                    srv.link.trim_end_matches('/'),
+                    semver
+                );
+            }
+        }
+        detected_versions.push(ver);
+    }
+
+    let versions: Vec<(&str, String)> = cfg
         .servers
         .iter()
-        .filter(|s| {
-            let ok = available(&s.cmd);
-            if !ok {
-                eprintln!("  {} {} -- not found", style("skip").yellow(), s.label);
-            }
-            ok
-        })
+        .zip(detected_versions.into_iter())
+        .map(|(s, ver)| (s.label.as_str(), ver))
         .collect();
-
-    eprintln!("\n{}", style("Detecting versions...").dim());
-    let versions: Vec<(&str, String)> = avail
-        .iter()
-        .map(|s| {
-            let ver = detect_version(&s.cmd);
-            eprintln!("  {} = {}", style(&s.label).bold(), ver);
-            (s.label.as_str(), ver)
-        })
-        .collect();
+    let avail: Vec<&ServerConfig> = cfg.servers.iter().collect();
 
     let total = benchmarks.len();
     let mut num = 0usize;
