@@ -607,7 +607,7 @@ fn date_stamp() -> String {
 struct LspClient {
     child: std::process::Child,
     rx: mpsc::Receiver<Value>,
-    writer: std::process::ChildStdin,
+    writer: Option<std::process::ChildStdin>,
     id: i64,
     logs: Arc<Mutex<Vec<String>>>,
 }
@@ -704,7 +704,7 @@ impl LspClient {
         Ok(Self {
             child,
             rx,
-            writer,
+            writer: Some(writer),
             id: 1,
             logs,
         })
@@ -715,28 +715,18 @@ impl LspClient {
         let msg = json!({"jsonrpc":"2.0","id":id,"method":method,"params":params});
         self.id += 1;
         let body = serde_json::to_string(&msg).unwrap();
-        write!(
-            self.writer,
-            "Content-Length: {}\r\n\r\n{}",
-            body.len(),
-            body
-        )
-        .map_err(|e| e.to_string())?;
-        self.writer.flush().map_err(|e| e.to_string())?;
+        let w = self.writer.as_mut().ok_or("stdin closed")?;
+        write!(w, "Content-Length: {}\r\n\r\n{}", body.len(), body).map_err(|e| e.to_string())?;
+        w.flush().map_err(|e| e.to_string())?;
         Ok(id)
     }
 
     fn notif(&mut self, method: &str, params: Value) -> Result<(), String> {
         let msg = json!({"jsonrpc":"2.0","method":method,"params":params});
         let body = serde_json::to_string(&msg).unwrap();
-        write!(
-            self.writer,
-            "Content-Length: {}\r\n\r\n{}",
-            body.len(),
-            body
-        )
-        .map_err(|e| e.to_string())?;
-        self.writer.flush().map_err(|e| e.to_string())
+        let w = self.writer.as_mut().ok_or("stdin closed")?;
+        write!(w, "Content-Length: {}\r\n\r\n{}", body.len(), body).map_err(|e| e.to_string())?;
+        w.flush().map_err(|e| e.to_string())
     }
 
     fn recv(&mut self, timeout: Duration) -> Result<Value, String> {
@@ -815,6 +805,7 @@ impl LspClient {
                         "rename": { "dynamicRegistration": false },
                         "signatureHelp": { "dynamicRegistration": false },
                         "codeAction": { "dynamicRegistration": false },
+                        "documentHighlight": { "dynamicRegistration": false },
                     },
                     "workspace": {
                         "symbol": { "dynamicRegistration": false }
@@ -853,16 +844,53 @@ impl LspClient {
         )
     }
 
+    /// Graceful LSP shutdown: send `shutdown` request, wait for response,
+    /// send `exit` notification, then wait for the process to exit.
+    /// Falls back to SIGKILL if the server doesn't exit within 5 seconds.
+    /// This allows profilers (DHAT, etc.) to write output on clean exit.
     fn kill(mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        self.shutdown_gracefully();
+    }
+
+    fn shutdown_gracefully(&mut self) {
+        // 1. Send shutdown request
+        if let Ok(id) = self.send("shutdown", json!(null)) {
+            // Wait up to 5s for shutdown response
+            let _ = self.read_response(id, Duration::from_secs(5));
+        }
+        // 2. Send exit notification
+        let _ = self.notif("exit", json!(null));
+        // 3. Close stdin — tower-lsp's serve loop detects EOF and returns,
+        //    allowing destructors (e.g. DHAT profiler) to run.
+        drop(self.writer.take());
+        // 4. Wait for process to exit (up to 5s), then force kill
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(_)) => return, // exited cleanly
+                Ok(None) => {
+                    if Instant::now() >= deadline {
+                        let _ = self.child.kill();
+                        let _ = self.child.wait();
+                        return;
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(_) => {
+                    let _ = self.child.kill();
+                    let _ = self.child.wait();
+                    return;
+                }
+            }
+        }
     }
 }
 
 impl Drop for LspClient {
     fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        // Try graceful shutdown first (allows profilers to write output),
+        // fall back to kill if it fails.
+        self.shutdown_gracefully();
     }
 }
 
@@ -2274,6 +2302,7 @@ const ALL_BENCHMARKS: &[&str] = &[
     "textDocument/rename",
     "textDocument/prepareRename",
     "textDocument/documentSymbol",
+    "textDocument/documentHighlight",
     "textDocument/documentLink",
     "textDocument/formatting",
     "textDocument/foldingRange",
@@ -2886,6 +2915,11 @@ fn main() {
             "textDocument/documentSymbol",
             "textDocument/documentSymbol",
             &doc_params,
+        ),
+        (
+            "textDocument/documentHighlight",
+            "textDocument/documentHighlight",
+            &position_params,
         ),
         (
             "textDocument/documentLink",
