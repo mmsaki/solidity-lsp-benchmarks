@@ -806,6 +806,7 @@ impl LspClient {
                         "signatureHelp": { "dynamicRegistration": false },
                         "codeAction": { "dynamicRegistration": false },
                         "documentHighlight": { "dynamicRegistration": false },
+                        "selectionRange": { "dynamicRegistration": false },
                     },
                     "workspace": {
                         "symbol": { "dynamicRegistration": false }
