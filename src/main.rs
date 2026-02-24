@@ -729,6 +729,15 @@ impl LspClient {
         w.flush().map_err(|e| e.to_string())
     }
 
+    /// Send a JSON-RPC response to a server-initiated request.
+    fn respond(&mut self, id: Value, result: Value) -> Result<(), String> {
+        let msg = json!({"jsonrpc":"2.0","id":id,"result":result});
+        let body = serde_json::to_string(&msg).unwrap();
+        let w = self.writer.as_mut().ok_or("stdin closed")?;
+        write!(w, "Content-Length: {}\r\n\r\n{}", body.len(), body).map_err(|e| e.to_string())?;
+        w.flush().map_err(|e| e.to_string())
+    }
+
     fn recv(&mut self, timeout: Duration) -> Result<Value, String> {
         self.rx.recv_timeout(timeout).map_err(|e| match e {
             mpsc::RecvTimeoutError::Timeout => "timeout".to_string(),
@@ -747,6 +756,41 @@ impl LspClient {
             // Match by id — skip server-to-client requests and notifications
             if msg.get("id").and_then(|v| v.as_i64()) == Some(expected_id) {
                 return Ok(msg);
+            }
+        }
+    }
+
+    /// Wait for a `$/progress` end notification (e.g. background project
+    /// indexing). Drains all notifications until it sees one with
+    /// `value.kind == "end"`, or until timeout. Auto-responds to
+    /// `window/workDoneProgress/create` requests from the server.
+    fn wait_for_progress_end(&mut self, timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return;
+            }
+            let msg = match self.recv(remaining) {
+                Ok(m) => m,
+                Err(_) => return,
+            };
+            // Auto-respond to server requests (e.g. window/workDoneProgress/create)
+            if let Some(id) = msg.get("id").cloned() {
+                if msg.get("method").is_some() {
+                    let _ = self.respond(id, json!(null));
+                    continue;
+                }
+            }
+            if msg.get("method").and_then(|m| m.as_str()) == Some("$/progress") {
+                let kind = msg
+                    .get("params")
+                    .and_then(|p| p.get("value"))
+                    .and_then(|v| v.get("kind"))
+                    .and_then(|k| k.as_str());
+                if kind == Some("end") {
+                    return;
+                }
             }
         }
     }
@@ -808,8 +852,14 @@ impl LspClient {
                         "documentHighlight": { "dynamicRegistration": false },
                         "selectionRange": { "dynamicRegistration": false },
                     },
+                    "window": {
+                        "workDoneProgress": true
+                    },
                     "workspace": {
-                        "symbol": { "dynamicRegistration": false }
+                        "symbol": { "dynamicRegistration": false },
+                        "fileOperations": {
+                            "willRename": true
+                        }
                     }
                 },
             }),
@@ -1648,6 +1698,14 @@ fn bench_lsp_method(
             };
         }
     }
+    // For methods that depend on the background project index (e.g.
+    // willRenameFiles), wait for the $/progress end notification so the
+    // full project index is in the cache before we send requests.
+    if method.contains("willRename") || method.contains("willDelete") {
+        on_progress("waiting for project index");
+        c.wait_for_progress_end(index_timeout);
+    }
+
     // Sample RSS after indexing
     let rss_kb = get_rss(c.child.id());
 
@@ -2315,6 +2373,7 @@ const ALL_BENCHMARKS: &[&str] = &[
     "textDocument/semanticTokens/full/delta",
     "textDocument/documentColor",
     "workspace/symbol",
+    "workspace/willRenameFiles",
 ];
 
 // ── CLI ─────────────────────────────────────────────────────────────────────
@@ -2854,6 +2913,24 @@ fn main() {
     };
     let semantic_tokens_params =
         |_method: &str, file_uri: &str| -> Value { json!({ "textDocument": { "uri": file_uri } }) };
+    let will_rename_params = |method: &str, file_uri: &str| -> Value {
+        let new_name = methods
+            .get(method)
+            .and_then(|m| m.new_name.as_deref())
+            .unwrap_or("__lsp_bench_renamed__.sol");
+        // Derive newUri from file_uri by replacing the filename
+        let new_uri = if let Some(pos) = file_uri.rfind('/') {
+            format!("{}/{}", &file_uri[..pos], new_name)
+        } else {
+            new_name.to_string()
+        };
+        json!({
+            "files": [{
+                "oldUri": file_uri,
+                "newUri": new_uri,
+            }]
+        })
+    };
 
     let semantic_tokens_range_params = |method: &str, file_uri: &str| -> Value {
         let (sl, sc) = start_pos_for(method);
@@ -2968,6 +3045,11 @@ fn main() {
             &doc_params,
         ),
         ("workspace/symbol", "workspace/symbol", &symbol_params),
+        (
+            "workspace/willRenameFiles",
+            "workspace/willRenameFiles",
+            &will_rename_params,
+        ),
     ];
 
     // ── spawn ────────────────────────────────────────────────────────────
