@@ -3,7 +3,7 @@ use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -288,6 +288,36 @@ struct RenameStep {
     expect: Option<ExpectConfig>,
 }
 
+/// A create step in a lifecycle sequence for workspace/willCreateFiles.
+///
+/// ```yaml
+/// createSteps:
+///   - file: test/NewFile.sol
+/// ```
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct CreateStep {
+    /// File to create (relative to project root).
+    file: String,
+    /// Expected response (for --verify mode).
+    #[serde(default)]
+    expect: Option<ExpectConfig>,
+}
+
+/// A delete step in a lifecycle sequence for workspace/willDeleteFiles.
+///
+/// ```yaml
+/// deleteSteps:
+///   - file: src/Foo.sol
+/// ```
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct DeleteStep {
+    /// File to delete (relative to project root).
+    file: String,
+    /// Expected response (for --verify mode).
+    #[serde(default)]
+    expect: Option<ExpectConfig>,
+}
+
 /// Per-method configuration overrides.
 ///
 /// ```yaml
@@ -355,6 +385,16 @@ struct MethodConfig {
     /// each rename mutates state and the next rename must work on the new state.
     #[serde(default, rename = "renameSteps")]
     rename_steps: Vec<RenameStep>,
+    /// Sequential create steps for workspace/willCreateFiles. Each step is a
+    /// full create lifecycle: willCreateFiles → apply edits on disk (if any)
+    /// → create file on disk → didCreateFiles.
+    #[serde(default, rename = "createSteps")]
+    create_steps: Vec<CreateStep>,
+    /// Sequential delete steps for workspace/willDeleteFiles. Each step is a
+    /// full delete lifecycle: willDeleteFiles → apply edits on disk (if any)
+    /// → delete file on disk → didDeleteFiles.
+    #[serde(default, rename = "deleteSteps")]
+    delete_steps: Vec<DeleteStep>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -1203,7 +1243,14 @@ fn stats(samples: &mut Vec<f64>) -> (f64, f64, f64) {
     )
 }
 
-fn is_valid_response(resp: &Value) -> bool {
+fn method_allows_null_result(method: &str) -> bool {
+    matches!(
+        method,
+        "workspace/willCreateFiles" | "workspace/willDeleteFiles" | "workspace/willRenameFiles"
+    )
+}
+
+fn is_valid_response_for_method(method: &str, resp: &Value) -> bool {
     if resp.get("error").is_some() {
         return false;
     }
@@ -1211,7 +1258,7 @@ fn is_valid_response(resp: &Value) -> bool {
         None => false,
         Some(r) => {
             if r.is_null() {
-                return false;
+                return method_allows_null_result(method);
             }
             // Direct array result (e.g. definition, references) — must be non-empty
             if let Some(arr) = r.as_array() {
@@ -1225,6 +1272,10 @@ fn is_valid_response(resp: &Value) -> bool {
             true
         }
     }
+}
+
+fn is_valid_response(resp: &Value) -> bool {
+    is_valid_response_for_method("", resp)
 }
 
 fn response_summary(resp: &Value, _max_chars: usize) -> Value {
@@ -1782,7 +1833,7 @@ fn bench_lsp_method(
             match c.read_response(req_id, timeout) {
                 Ok(resp) => {
                     let ms = start.elapsed().as_secs_f64() * 1000.0;
-                    if is_valid_response(&resp) {
+                    if is_valid_response_for_method(method, &resp) {
                         on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
                         if i >= w {
                             let summary = response_summary(&resp, response_limit);
@@ -1920,7 +1971,7 @@ fn bench_lsp_snapshots(
                     total,
                     snap_name,
                     ms,
-                    if is_valid_response(&resp) {
+                    if is_valid_response_for_method(method, &resp) {
                         ""
                     } else {
                         "  (null)"
@@ -2154,12 +2205,60 @@ fn bench_lsp_rename_sequence(
     c.wait_for_progress_end(index_timeout);
 
     let rss_kb = get_rss(c.child.id());
-    let total = steps.len();
+    // Always run rename cycles and return to the original filename by renaming
+    // back. If the provided steps do not return to the starting file path,
+    // synthesize a final reverse step.
+    let mut run_steps: Vec<RenameStep> = steps.to_vec();
+    if !run_steps.is_empty() {
+        let original = PathBuf::from(&run_steps[0].file);
+        let original_name = original
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| run_steps[0].file.clone());
+
+        let mut current = original.clone();
+        for step in &run_steps {
+            let old_path = PathBuf::from(&step.file);
+            // Prefer the declared step source if it diverges, so we still
+            // compute a reasonable final path for mixed step sequences.
+            if old_path != current {
+                current = old_path;
+            }
+            current = current
+                .parent()
+                .map(|p| p.join(&step.new_name))
+                .unwrap_or_else(|| PathBuf::from(&step.new_name));
+        }
+
+        if current != original {
+            run_steps.push(RenameStep {
+                file: current.to_string_lossy().to_string(),
+                new_name: original_name,
+                expect: None,
+            });
+        }
+    }
+    let total = run_steps.len();
     let mut iterations = Vec::new();
 
     // Track file renames so we can restore at the end.
     // Each entry: (current_path, original_path, original_content).
     let mut restore_list: Vec<(PathBuf, PathBuf, Vec<u8>)> = Vec::new();
+    // Snapshot which rename paths existed before the sequence started.
+    // Only these paths are restored from rename_list; paths created during
+    // the sequence (e.g. intermediate rename targets) are not treated as
+    // originals.
+    let mut initially_existing: HashSet<PathBuf> = HashSet::new();
+    for step in &run_steps {
+        let old_path = cwd.join(&step.file);
+        let new_path = old_path.parent().unwrap().join(&step.new_name);
+        if old_path.exists() {
+            initially_existing.insert(old_path);
+        }
+        if new_path.exists() {
+            initially_existing.insert(new_path);
+        }
+    }
     // Track content changes to non-renamed files so we can restore them too.
     // Key: absolute path, Value: original content.
     let mut content_restore: HashMap<PathBuf, Vec<u8>> = HashMap::new();
@@ -2167,7 +2266,7 @@ fn bench_lsp_rename_sequence(
     // didChange version counter (per-file)
     let mut versions: HashMap<String, i32> = HashMap::new();
 
-    for (si, step) in steps.iter().enumerate() {
+    for (si, step) in run_steps.iter().enumerate() {
         let step_label = format!("{} → {}", step.file, step.new_name);
         on_progress(&format!("[{}/{}] {}", si + 1, total, step_label));
 
@@ -2197,7 +2296,9 @@ fn bench_lsp_rename_sequence(
         let new_uri_str = uri(&new_path);
 
         // Save original content for restore (only on first touch)
-        if !restore_list.iter().any(|(_, orig, _)| orig == &old_path) {
+        if initially_existing.contains(&old_path)
+            && !restore_list.iter().any(|(_, orig, _)| orig == &old_path)
+        {
             if let Ok(content) = std::fs::read(&old_path) {
                 restore_list.push((old_path.clone(), old_path.clone(), content));
             }
@@ -2456,6 +2557,332 @@ fn restore_files(
     for (path, content) in content_map {
         let _ = std::fs::write(path, content);
     }
+}
+
+/// Convert LSP line/character to byte offset for UTF-8 text.
+fn lsp_pos_to_byte_offset(text: &str, line: usize, character: usize) -> usize {
+    let mut current_line = 0usize;
+    let mut byte_idx = 0usize;
+
+    for l in text.split_inclusive('\n') {
+        if current_line == line {
+            let line_text = l.strip_suffix('\n').unwrap_or(l);
+            let mut col = 0usize;
+            let mut line_byte = 0usize;
+            for ch in line_text.chars() {
+                if col >= character {
+                    break;
+                }
+                line_byte += ch.len_utf8();
+                col += 1;
+            }
+            return byte_idx + line_byte;
+        }
+        byte_idx += l.len();
+        current_line += 1;
+    }
+
+    text.len()
+}
+
+/// Apply a list of LSP TextEdits (JSON form) to UTF-8 text.
+fn apply_text_edits_from_json(mut content: String, edits_json: &[Value]) -> String {
+    let mut edits: Vec<(usize, usize, String)> = edits_json
+        .iter()
+        .filter_map(|e| {
+            let new_text = e.get("newText")?.as_str()?.to_string();
+            let start_line = e.get("range")?.get("start")?.get("line")?.as_u64()? as usize;
+            let start_col = e.get("range")?.get("start")?.get("character")?.as_u64()? as usize;
+            let end_line = e.get("range")?.get("end")?.get("line")?.as_u64()? as usize;
+            let end_col = e.get("range")?.get("end")?.get("character")?.as_u64()? as usize;
+            let start = lsp_pos_to_byte_offset(&content, start_line, start_col);
+            let end = lsp_pos_to_byte_offset(&content, end_line, end_col);
+            Some((start, end, new_text))
+        })
+        .collect();
+
+    edits.sort_by(|a, b| (b.0, b.1).cmp(&(a.0, a.1)));
+    for (start, end, new_text) in edits {
+        if start <= end && end <= content.len() {
+            content.replace_range(start..end, &new_text);
+        }
+    }
+    content
+}
+
+/// Apply WorkspaceEdit.changes (JSON form) to disk and notify didChange.
+fn apply_workspace_changes_to_disk(
+    c: &mut LspClient,
+    edits_obj: &serde_json::Map<String, Value>,
+    content_restore: &mut HashMap<PathBuf, Vec<u8>>,
+    versions: &mut HashMap<String, i32>,
+) {
+    for (file_uri, file_edits) in edits_obj {
+        let file_path = PathBuf::from(file_uri.strip_prefix("file://").unwrap_or(file_uri));
+
+        if !content_restore.contains_key(&file_path) {
+            if let Ok(orig) = std::fs::read(&file_path) {
+                content_restore.insert(file_path.clone(), orig);
+            }
+        }
+
+        let current = std::fs::read_to_string(&file_path).unwrap_or_default();
+        let edits_arr = match file_edits.as_array() {
+            Some(a) => a,
+            None => continue,
+        };
+        let next = apply_text_edits_from_json(current, edits_arr);
+
+        if let Some(parent) = file_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if std::fs::write(&file_path, &next).is_ok() {
+            let ver = versions.entry(file_uri.clone()).or_insert(1);
+            *ver += 1;
+            let _ = c.did_change(file_uri, *ver, &next);
+        }
+    }
+}
+
+fn bench_lsp_create_sequence(
+    srv: &ServerConfig,
+    root: &str,
+    cwd: &Path,
+    target_file: &Path,
+    steps: &[CreateStep],
+    index_timeout: Duration,
+    timeout: Duration,
+    response_limit: usize,
+    on_progress: &dyn Fn(&str),
+    verbose: bool,
+) -> BenchResult {
+    on_progress("spawning");
+    let mut c = match LspClient::spawn(&srv.cmd, &srv.args, cwd, verbose) {
+        Ok(c) => c,
+        Err(e) => {
+            return BenchResult::Fail {
+                error: e,
+                rss_kb: None,
+            }
+        }
+    };
+    if let Err(e) = c.initialize(root) {
+        let rss = get_rss(c.child.id());
+        return BenchResult::Fail {
+            error: e,
+            rss_kb: rss,
+        };
+    }
+    if let Err(e) = c.open_file(target_file) {
+        let rss = get_rss(c.child.id());
+        return BenchResult::Fail {
+            error: e,
+            rss_kb: rss,
+        };
+    }
+    on_progress("waiting for diagnostics");
+    if let Err(e) = c.wait_for_valid_diagnostics(index_timeout) {
+        let rss = get_rss(c.child.id());
+        return BenchResult::Fail {
+            error: format!("wait_for_diagnostics: {}", e),
+            rss_kb: rss,
+        };
+    }
+    on_progress("waiting for project index");
+    c.wait_for_progress_end(index_timeout);
+
+    let rss_kb = get_rss(c.child.id());
+    let mut iterations = Vec::new();
+    let mut content_restore: HashMap<PathBuf, Vec<u8>> = HashMap::new();
+    let mut created_paths: Vec<PathBuf> = Vec::new();
+    let mut versions: HashMap<String, i32> = HashMap::new();
+    let total = steps.len();
+
+    for (si, step) in steps.iter().enumerate() {
+        let new_path = cwd.join(&step.file);
+        let new_uri = uri(&new_path);
+        on_progress(&format!("[{}/{}] create {}", si + 1, total, step.file));
+
+        if new_path.exists() {
+            if !content_restore.contains_key(&new_path) {
+                if let Ok(orig) = std::fs::read(&new_path) {
+                    content_restore.insert(new_path.clone(), orig);
+                }
+            }
+            let _ = std::fs::remove_file(&new_path);
+        }
+
+        let params = json!({ "files": [{ "uri": new_uri }] });
+        let start = Instant::now();
+        let req_id = match c.send("workspace/willCreateFiles", params) {
+            Ok(id) => id,
+            Err(e) => {
+                restore_files(&[], &content_restore);
+                return BenchResult::Fail { error: e, rss_kb };
+            }
+        };
+        let resp = match c.read_response(req_id, timeout) {
+            Ok(r) => r,
+            Err(e) => {
+                restore_files(&[], &content_restore);
+                return BenchResult::Fail { error: e, rss_kb };
+            }
+        };
+        if !is_valid_response_for_method("workspace/willCreateFiles", &resp) {
+            restore_files(&[], &content_restore);
+            return BenchResult::Invalid {
+                first_response: resp,
+                rss_kb,
+            };
+        }
+        let ms = start.elapsed().as_secs_f64() * 1000.0;
+        let summary = response_summary(&resp, response_limit);
+        iterations.push((ms, summary));
+
+        if let Some(changes) = resp
+            .get("result")
+            .and_then(|r| r.get("changes"))
+            .and_then(|c| c.as_object())
+        {
+            apply_workspace_changes_to_disk(&mut c, changes, &mut content_restore, &mut versions);
+        }
+
+        if !new_path.exists() {
+            if let Some(parent) = new_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let _ = std::fs::write(&new_path, "");
+            created_paths.push(new_path.clone());
+        }
+
+        let did_create = json!({ "files": [{ "uri": uri(&new_path) }] });
+        let _ = c.notif("workspace/didCreateFiles", did_create);
+        c.wait_for_progress_end(index_timeout);
+    }
+
+    for p in created_paths {
+        let _ = std::fs::remove_file(p);
+    }
+    restore_files(&[], &content_restore);
+
+    c.kill();
+    BenchResult::Ok { iterations, rss_kb }
+}
+
+fn bench_lsp_delete_sequence(
+    srv: &ServerConfig,
+    root: &str,
+    cwd: &Path,
+    target_file: &Path,
+    steps: &[DeleteStep],
+    index_timeout: Duration,
+    timeout: Duration,
+    response_limit: usize,
+    on_progress: &dyn Fn(&str),
+    verbose: bool,
+) -> BenchResult {
+    on_progress("spawning");
+    let mut c = match LspClient::spawn(&srv.cmd, &srv.args, cwd, verbose) {
+        Ok(c) => c,
+        Err(e) => {
+            return BenchResult::Fail {
+                error: e,
+                rss_kb: None,
+            }
+        }
+    };
+    if let Err(e) = c.initialize(root) {
+        let rss = get_rss(c.child.id());
+        return BenchResult::Fail {
+            error: e,
+            rss_kb: rss,
+        };
+    }
+    if let Err(e) = c.open_file(target_file) {
+        let rss = get_rss(c.child.id());
+        return BenchResult::Fail {
+            error: e,
+            rss_kb: rss,
+        };
+    }
+    on_progress("waiting for diagnostics");
+    if let Err(e) = c.wait_for_valid_diagnostics(index_timeout) {
+        let rss = get_rss(c.child.id());
+        return BenchResult::Fail {
+            error: format!("wait_for_diagnostics: {}", e),
+            rss_kb: rss,
+        };
+    }
+    on_progress("waiting for project index");
+    c.wait_for_progress_end(index_timeout);
+
+    let rss_kb = get_rss(c.child.id());
+    let mut iterations = Vec::new();
+    let mut content_restore: HashMap<PathBuf, Vec<u8>> = HashMap::new();
+    let mut versions: HashMap<String, i32> = HashMap::new();
+    let total = steps.len();
+
+    for (si, step) in steps.iter().enumerate() {
+        let del_path = cwd.join(&step.file);
+        on_progress(&format!("[{}/{}] delete {}", si + 1, total, step.file));
+
+        if !del_path.exists() {
+            restore_files(&[], &content_restore);
+            return BenchResult::Fail {
+                error: format!("delete step target missing: {}", del_path.display()),
+                rss_kb,
+            };
+        }
+        if !content_restore.contains_key(&del_path) {
+            if let Ok(orig) = std::fs::read(&del_path) {
+                content_restore.insert(del_path.clone(), orig);
+            }
+        }
+
+        let params = json!({ "files": [{ "uri": uri(&del_path) }] });
+        let start = Instant::now();
+        let req_id = match c.send("workspace/willDeleteFiles", params) {
+            Ok(id) => id,
+            Err(e) => {
+                restore_files(&[], &content_restore);
+                return BenchResult::Fail { error: e, rss_kb };
+            }
+        };
+        let resp = match c.read_response(req_id, timeout) {
+            Ok(r) => r,
+            Err(e) => {
+                restore_files(&[], &content_restore);
+                return BenchResult::Fail { error: e, rss_kb };
+            }
+        };
+        if !is_valid_response_for_method("workspace/willDeleteFiles", &resp) {
+            restore_files(&[], &content_restore);
+            return BenchResult::Invalid {
+                first_response: resp,
+                rss_kb,
+            };
+        }
+        let ms = start.elapsed().as_secs_f64() * 1000.0;
+        let summary = response_summary(&resp, response_limit);
+        iterations.push((ms, summary));
+
+        if let Some(changes) = resp
+            .get("result")
+            .and_then(|r| r.get("changes"))
+            .and_then(|c| c.as_object())
+        {
+            apply_workspace_changes_to_disk(&mut c, changes, &mut content_restore, &mut versions);
+        }
+
+        let _ = std::fs::remove_file(&del_path);
+        let did_delete = json!({ "files": [{ "uri": uri(&del_path) }] });
+        let _ = c.notif("workspace/didDeleteFiles", did_delete);
+        c.wait_for_progress_end(index_timeout);
+    }
+
+    restore_files(&[], &content_restore);
+    c.kill();
+    BenchResult::Ok { iterations, rss_kb }
 }
 
 /// Benchmark `textDocument/semanticTokens/full/delta`.
@@ -2803,6 +3230,8 @@ const ALL_BENCHMARKS: &[&str] = &[
     "textDocument/documentColor",
     "workspace/symbol",
     "workspace/willRenameFiles",
+    "workspace/willCreateFiles",
+    "workspace/willDeleteFiles",
 ];
 
 // ── CLI ─────────────────────────────────────────────────────────────────────
@@ -3371,6 +3800,36 @@ fn main() {
         })
     };
 
+    let will_create_params = |method: &str, file_uri: &str| -> Value {
+        let method_cfg = methods.get(method);
+        let new_name = method_cfg
+            .and_then(|m| m.new_name.as_deref())
+            .unwrap_or("__lsp_bench_created__.sol");
+        // Build a URI for the new file in the same directory as the target file.
+        let new_uri = if let Some(pos) = file_uri.rfind('/') {
+            format!("{}/{}", &file_uri[..pos], new_name)
+        } else {
+            new_name.to_string()
+        };
+        json!({
+            "files": [{
+                "uri": new_uri,
+            }]
+        })
+    };
+    let will_delete_params = |method: &str, file_uri: &str| -> Value {
+        let method_cfg = methods.get(method);
+        // Use per-method file override if set, otherwise use the top-level file.
+        let target_uri = match method_cfg.and_then(|m| m.file.as_deref()) {
+            Some(rel_path) => uri(&cwd.join(rel_path)),
+            None => file_uri.to_string(),
+        };
+        json!({
+            "files": [{
+                "uri": target_uri,
+            }]
+        })
+    };
     let semantic_tokens_range_params = |method: &str, file_uri: &str| -> Value {
         let (sl, sc) = start_pos_for(method);
         let (el, ec) = pos_for(method);
@@ -3488,6 +3947,16 @@ fn main() {
             "workspace/willRenameFiles",
             "workspace/willRenameFiles",
             &will_rename_params,
+        ),
+        (
+            "workspace/willCreateFiles",
+            "workspace/willCreateFiles",
+            &will_create_params,
+        ),
+        (
+            "workspace/willDeleteFiles",
+            "workspace/willDeleteFiles",
+            &will_delete_params,
         ),
     ];
 
@@ -3685,11 +4154,33 @@ fn main() {
                 .get(*method)
                 .map(|m| m.rename_steps.clone())
                 .unwrap_or_default();
+            let create_steps: Vec<CreateStep> = methods
+                .get(*method)
+                .map(|m| m.create_steps.clone())
+                .unwrap_or_default();
+            let delete_steps: Vec<DeleteStep> = methods
+                .get(*method)
+                .map(|m| m.delete_steps.clone())
+                .unwrap_or_default();
             if !rename_steps.is_empty() {
                 eprintln!(
                     "  {} {} rename step(s) (full lifecycle)",
                     style("rename").magenta(),
                     rename_steps.len()
+                );
+            }
+            if !create_steps.is_empty() {
+                eprintln!(
+                    "  {} {} create step(s) (full lifecycle)",
+                    style("create").cyan(),
+                    create_steps.len()
+                );
+            }
+            if !delete_steps.is_empty() {
+                eprintln!(
+                    "  {} {} delete step(s) (full lifecycle)",
+                    style("delete").yellow(),
+                    delete_steps.len()
                 );
             }
             let is_cold = methods.get(*method).map_or(false, |m| m.cold);
@@ -3707,6 +4198,36 @@ fn main() {
                         &cwd,
                         &bench_sol,
                         &rename_steps,
+                        index_timeout,
+                        timeout,
+                        response_limit,
+                        on_progress,
+                        verbose,
+                    )
+                })
+            } else if !create_steps.is_empty() {
+                run_bench(&avail, response_limit, |srv, on_progress| {
+                    bench_lsp_create_sequence(
+                        srv,
+                        &root,
+                        &cwd,
+                        &bench_sol,
+                        &create_steps,
+                        index_timeout,
+                        timeout,
+                        response_limit,
+                        on_progress,
+                        verbose,
+                    )
+                })
+            } else if !delete_steps.is_empty() {
+                run_bench(&avail, response_limit, |srv, on_progress| {
+                    bench_lsp_delete_sequence(
+                        srv,
+                        &root,
+                        &cwd,
+                        &bench_sol,
+                        &delete_steps,
                         index_timeout,
                         timeout,
                         response_limit,
