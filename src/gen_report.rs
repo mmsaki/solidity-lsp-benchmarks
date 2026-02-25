@@ -452,6 +452,10 @@ fn human_result(bench_name: &str, srv: &Value) -> String {
         return human_result_from_text(bench_name, response.as_str().unwrap_or(""));
     }
 
+    if response.is_null() && method_allows_null_result(bench_name) {
+        return "null (valid)".into();
+    }
+
     let method = bench_name.to_lowercase();
 
     // definition / declaration / typeDefinition / implementation
@@ -1179,6 +1183,9 @@ fn classify_response(bench_name: &str, srv: &Value) -> (&'static str, bool) {
     let response = parse_response(srv);
     if response.get("error").is_some() {
         return ("error", false);
+    }
+    if response.is_null() && method_allows_null_result(bench_name) {
+        return ("content", true);
     }
     if response.is_null() {
         return ("null", false);
