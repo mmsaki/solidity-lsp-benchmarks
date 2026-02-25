@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
+use sysinfo::{Pid, ProcessRefreshKind, RefreshKind, System};
 
 // ── Server Registry ─────────────────────────────────────────────────────────
 
@@ -194,6 +195,25 @@ fn discover_servers_file(config_path: &str, explicit: Option<&str>) -> Option<Pa
 ///   line: 39
 /// ```
 #[derive(Debug, Clone, Deserialize, Serialize, Default)]
+struct CompletionItemExpect {
+    /// Expected label for a completion item.
+    #[serde(default)]
+    label: Option<String>,
+    /// Substring that must appear in completion item detail.
+    #[serde(default, rename = "detailContains")]
+    detail_contains: Option<String>,
+    /// Prefix that completion item sortText must start with.
+    #[serde(default, rename = "sortTextPrefix")]
+    sort_text_prefix: Option<String>,
+    /// Whether completion item should include additionalTextEdits.
+    #[serde(default, rename = "hasAdditionalTextEdits")]
+    has_additional_text_edits: Option<bool>,
+    /// Substring that must appear in at least one additionalTextEdit.newText.
+    #[serde(default, rename = "additionalTextEditsContain")]
+    additional_text_edits_contain: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, Default)]
 struct ExpectConfig {
     /// Expected filename suffix (e.g. "SafeCast.sol"). Matches if the response
     /// URI ends with this string.
@@ -208,6 +228,12 @@ struct ExpectConfig {
     /// Minimum number of items in an array response. Passes if actual >= min_count.
     #[serde(default, rename = "minCount")]
     min_count: Option<usize>,
+    /// Completion-item predicates that must match at least one completion item.
+    #[serde(default, rename = "containsItems")]
+    contains_items: Vec<CompletionItemExpect>,
+    /// Completion-item predicates that must not match any completion item.
+    #[serde(default, rename = "absentItems")]
+    absent_items: Vec<CompletionItemExpect>,
 }
 
 /// A file snapshot sent via didChange, with its own cursor position.
@@ -1380,7 +1406,121 @@ fn check_expectation(resp: &Value, expect: &ExpectConfig) -> Result<(), String> 
         }
     }
 
+    // Check completion item predicates
+    if !expect.contains_items.is_empty() || !expect.absent_items.is_empty() {
+        let completion_items: Vec<&Value> = result
+            .get("items")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().collect())
+            .or_else(|| result.as_array().map(|a| a.iter().collect()))
+            .unwrap_or_default();
+
+        if completion_items.is_empty() {
+            return Err("containsItems/absentItems: response has no completion items".to_string());
+        }
+
+        for item_expect in &expect.contains_items {
+            if !completion_items
+                .iter()
+                .any(|item| completion_item_matches(item, item_expect))
+            {
+                return Err(format!(
+                    "containsItems: no completion item matched {}",
+                    completion_item_expect_to_string(item_expect)
+                ));
+            }
+        }
+
+        for item_expect in &expect.absent_items {
+            if completion_items
+                .iter()
+                .any(|item| completion_item_matches(item, item_expect))
+            {
+                return Err(format!(
+                    "absentItems: found unexpected completion item matching {}",
+                    completion_item_expect_to_string(item_expect)
+                ));
+            }
+        }
+    }
+
     Ok(())
+}
+
+fn completion_item_matches(item: &Value, expect: &CompletionItemExpect) -> bool {
+    if let Some(ref label) = expect.label {
+        if item.get("label").and_then(|v| v.as_str()) != Some(label.as_str()) {
+            return false;
+        }
+    }
+
+    if let Some(ref detail_contains) = expect.detail_contains {
+        let detail = item.get("detail").and_then(|v| v.as_str()).unwrap_or("");
+        if !detail.contains(detail_contains) {
+            return false;
+        }
+    }
+
+    if let Some(ref prefix) = expect.sort_text_prefix {
+        let sort_text = item.get("sortText").and_then(|v| v.as_str()).unwrap_or("");
+        if !sort_text.starts_with(prefix) {
+            return false;
+        }
+    }
+
+    if let Some(expected_has_edits) = expect.has_additional_text_edits {
+        let has_edits = item
+            .get("additionalTextEdits")
+            .or_else(|| item.get("additional_text_edits"))
+            .map(|v| !v.is_null())
+            .unwrap_or(false);
+        if has_edits != expected_has_edits {
+            return false;
+        }
+    }
+
+    if let Some(ref needle) = expect.additional_text_edits_contain {
+        let edits = item
+            .get("additionalTextEdits")
+            .or_else(|| item.get("additional_text_edits"))
+            .and_then(|v| v.as_array());
+        let found = edits.is_some_and(|arr| {
+            arr.iter().any(|e| {
+                e.get("newText")
+                    .and_then(|v| v.as_str())
+                    .is_some_and(|s| s.contains(needle))
+            })
+        });
+        if !found {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn completion_item_expect_to_string(expect: &CompletionItemExpect) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(v) = &expect.label {
+        parts.push(format!("label={v}"));
+    }
+    if let Some(v) = &expect.detail_contains {
+        parts.push(format!("detailContains={v}"));
+    }
+    if let Some(v) = &expect.sort_text_prefix {
+        parts.push(format!("sortTextPrefix={v}"));
+    }
+    if let Some(v) = expect.has_additional_text_edits {
+        parts.push(format!("hasAdditionalTextEdits={v}"));
+    }
+    if let Some(v) = &expect.additional_text_edits_contain {
+        parts.push(format!("additionalTextEditsContain={v}"));
+    }
+    if parts.is_empty() {
+        "{}".to_string()
+    } else {
+        format!("{{{}}}", parts.join(", "))
+    }
 }
 
 /// Result of verifying expectations across a benchmark run.
@@ -1403,12 +1543,31 @@ impl VerifyTally {
 // ── Memory measurement ──────────────────────────────────────────────────────
 
 /// Get the resident set size (RSS) of a process in kilobytes.
-/// Uses `ps` on macOS/Linux. Returns None if measurement fails.
+/// Uses sysinfo first, then falls back to `ps` on macOS/Linux.
+/// Returns None if measurement fails.
 fn get_rss(pid: u32) -> Option<u64> {
-    let output = std::process::Command::new("ps")
+    // Prefer native process inspection via sysinfo (works better in restricted shells).
+    let target = Pid::from_u32(pid);
+    let mut sys = System::new_with_specifics(
+        RefreshKind::new().with_processes(ProcessRefreshKind::new().with_memory()),
+    );
+    sys.refresh_pids_specifics(&[target], ProcessRefreshKind::new().with_memory());
+    if let Some(proc_) = sys.process(target) {
+        // sysinfo reports bytes; convert to kilobytes to match report schema.
+        let mem_bytes = proc_.memory();
+        if mem_bytes > 0 {
+            return Some(mem_bytes / 1024);
+        }
+    }
+
+    // Fallback: shell out to ps where available.
+    let output = Command::new("ps")
         .args(["-o", "rss=", "-p", &pid.to_string()])
         .output()
         .ok()?;
+    if !output.status.success() {
+        return None;
+    }
     let s = String::from_utf8_lossy(&output.stdout);
     s.trim().parse::<u64>().ok()
 }
@@ -1545,6 +1704,7 @@ fn bench_spawn(
     verbose: bool,
 ) -> BenchResult {
     let mut iterations = Vec::new();
+    let mut peak_rss: Option<u64> = None;
     for i in 0..(w + n) {
         on_progress(&iter_msg(i, w, n));
         let start = Instant::now();
@@ -1558,10 +1718,14 @@ fn bench_spawn(
             }
         };
         if let Err(e) = c.initialize(root) {
+            let rss = get_rss(c.child.id());
             return BenchResult::Fail {
                 error: e,
-                rss_kb: None,
+                rss_kb: rss,
             };
+        }
+        if let Some(rss) = get_rss(c.child.id()) {
+            peak_rss = Some(peak_rss.map_or(rss, |prev: u64| prev.max(rss)));
         }
         let ms = start.elapsed().as_secs_f64() * 1000.0;
         on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
@@ -1572,7 +1736,7 @@ fn bench_spawn(
     }
     BenchResult::Ok {
         iterations,
-        rss_kb: None,
+        rss_kb: peak_rss,
     }
 }
 
