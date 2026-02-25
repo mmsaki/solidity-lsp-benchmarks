@@ -864,6 +864,13 @@ fn is_correct(bench_name: &str, srv: &Value) -> bool {
     check_correctness(bench_name, srv) == "\u{2713}"
 }
 
+fn method_allows_null_result(bench_name: &str) -> bool {
+    matches!(
+        bench_name,
+        "workspace/willCreateFiles" | "workspace/willDeleteFiles" | "workspace/willRenameFiles"
+    )
+}
+
 /// Check if a server's response indicates a valid, non-empty, meaningful result.
 fn check_correctness(bench_name: &str, srv: &Value) -> &'static str {
     let status = srv.get("status").and_then(|v| v.as_str()).unwrap_or("");
@@ -871,6 +878,9 @@ fn check_correctness(bench_name: &str, srv: &Value) -> &'static str {
         return "\u{2717}"; // ✗
     }
     let response = parse_response(srv);
+    if response.is_null() && method_allows_null_result(bench_name) {
+        return "\u{2713}"; // ✓
+    }
     if response_is_empty(&response) {
         return "\u{2717}"; // ✗
     }
@@ -882,8 +892,9 @@ fn check_correctness(bench_name: &str, srv: &Value) -> &'static str {
 
     let method = bench_name.to_lowercase();
 
-    // For rename: 0 edits means it didn't actually rename anything
-    if method.contains("rename") && !method.contains("prepare") {
+    // For textDocument/rename: 0 edits means it didn't actually rename anything.
+    // Do not apply this rule to workspace/willRenameFiles where `null` is valid.
+    if method == "textdocument/rename" {
         if let Some(changes) = response.get("documentChanges").and_then(|v| v.as_array()) {
             let edit_count: usize = changes
                 .iter()
