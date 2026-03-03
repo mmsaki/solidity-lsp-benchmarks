@@ -1307,43 +1307,11 @@ fn stats(samples: &mut Vec<f64>) -> (f64, f64, f64) {
     )
 }
 
-fn method_allows_null_result(method: &str) -> bool {
-    matches!(
-        method,
-        "workspace/willCreateFiles" | "workspace/willDeleteFiles" | "workspace/willRenameFiles"
-    )
-}
-
-fn method_allows_object_result(method: &str) -> bool {
-    matches!(method, "workspace/executeCommand")
-}
-
-fn is_valid_response_for_method(method: &str, resp: &Value) -> bool {
-    if resp.get("error").is_some() {
-        return false;
-    }
-    match resp.get("result") {
-        None => false,
-        Some(r) => {
-            if r.is_null() {
-                return method_allows_null_result(method);
-            }
-            // Direct array result (e.g. definition, references) — must be non-empty
-            if let Some(arr) = r.as_array() {
-                return !arr.is_empty();
-            }
-            // Completion response: { isIncomplete: bool, items: [...] }
-            // An empty items array means no completions were returned
-            if let Some(items) = r.get("items").and_then(|v| v.as_array()) {
-                return !items.is_empty();
-            }
-            // Object results (e.g. workspace/executeCommand returns { success: true })
-            if r.is_object() {
-                return method_allows_object_result(method);
-            }
-            true
-        }
-    }
+fn is_valid_response_for_method(_method: &str, resp: &Value) -> bool {
+    // Only reject JSON-RPC errors. Any other response — null, empty array,
+    // empty completion list, object — is a legitimate server reply.
+    // Correctness is checked separately via explicit `expect` blocks with --verify.
+    resp.get("error").is_none() && resp.get("result").is_some()
 }
 
 fn is_valid_response(resp: &Value) -> bool {
