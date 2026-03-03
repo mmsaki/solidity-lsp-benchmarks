@@ -237,6 +237,10 @@ struct ExpectConfig {
     /// For workspace/executeCommand: expect result.success == true/false.
     #[serde(default)]
     success: Option<bool>,
+    /// For textDocument/codeAction: expect at least one action whose title
+    /// contains this substring.
+    #[serde(default, rename = "titleContains")]
+    title_contains: Option<String>,
 }
 
 /// A file snapshot sent via didChange, with its own cursor position.
@@ -927,14 +931,26 @@ impl LspClient {
     }
 
     fn wait_for_valid_diagnostics(&mut self, timeout: Duration) -> Result<DiagnosticsInfo, String> {
+        self.wait_for_diagnostics_with_min(timeout, 0)
+    }
+
+    /// Like `wait_for_valid_diagnostics` but keeps looping until at least
+    /// `min_count` diagnostics are received.  Used by `bench_code_action` so
+    /// that an empty clearing-publish doesn't cause us to send codeAction with
+    /// an empty diagnostics array and get null back.
+    fn wait_for_diagnostics_with_min(
+        &mut self,
+        timeout: Duration,
+        min_count: usize,
+    ) -> Result<DiagnosticsInfo, String> {
         let start = Instant::now();
         let deadline = start + timeout;
-        let mut _last_count = 0usize;
+        let mut last_count = 0usize;
         let mut last_msg = json!(null);
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                return if _last_count > 0 {
+                return if last_count >= min_count.max(1) {
                     Ok(DiagnosticsInfo { message: last_msg })
                 } else {
                     Err("timeout".into())
@@ -949,11 +965,12 @@ impl LspClient {
                     .and_then(|d| d.as_array())
                     .map(|a| a.len())
                     .unwrap_or(0);
-                _last_count = count;
+                last_count = count;
                 last_msg = msg;
-                // if count > 0 {
-                return Ok(DiagnosticsInfo { message: last_msg });
-                // }
+                if count >= min_count {
+                    return Ok(DiagnosticsInfo { message: last_msg });
+                }
+                // count < min_count — keep waiting for the real publish
             }
         }
     }
@@ -1487,6 +1504,25 @@ fn check_expectation(resp: &Value, expect: &ExpectConfig) -> Result<(), String> 
         }
     }
 
+    // Check code action title (textDocument/codeAction)
+    if let Some(ref expected_title) = expect.title_contains {
+        let actions = result.as_array().cloned().unwrap_or_default();
+        let found = actions.iter().any(|action| {
+            // Each element is either a CodeAction or a Command.
+            action
+                .get("title")
+                .and_then(|t| t.as_str())
+                .map(|t| t.contains(expected_title.as_str()))
+                .unwrap_or(false)
+        });
+        if !found {
+            return Err(format!(
+                "titleContains: no action with title containing \"{}\"",
+                expected_title
+            ));
+        }
+    }
+
     Ok(())
 }
 
@@ -1852,6 +1888,114 @@ fn bench_diagnostics(
         iterations,
         rss_kb: peak_rss,
     }
+}
+
+/// textDocument/codeAction benchmark.
+///
+/// Opens the file, waits for diagnostics (which carry the error codes), then
+/// sends `textDocument/codeAction` with those diagnostics in the context so the
+/// server can return quick-fix actions.  The server iterates
+/// `params.context.diagnostics` to build actions, so we must forward the real
+/// diagnostic objects — an empty context would always return an empty array.
+fn bench_code_action(
+    srv: &ServerConfig,
+    root: &str,
+    cwd: &Path,
+    target_file: &Path,
+    line: u32,
+    col: u32,
+    index_timeout: Duration,
+    timeout: Duration,
+    w: usize,
+    n: usize,
+    response_limit: usize,
+    on_progress: &dyn Fn(&str),
+    init_settings: Option<&Value>,
+    verbose: bool,
+) -> BenchResult {
+    on_progress("spawning");
+    let mut c = match LspClient::spawn(&srv.cmd, &srv.args, cwd, verbose) {
+        Ok(c) => c,
+        Err(e) => {
+            return BenchResult::Fail {
+                error: e,
+                rss_kb: None,
+            }
+        }
+    };
+    if let Err(e) = c.initialize(root, init_settings) {
+        let rss = get_rss(c.child.id());
+        return BenchResult::Fail {
+            error: e,
+            rss_kb: rss,
+        };
+    }
+    if let Err(e) = c.open_file(target_file) {
+        let rss = get_rss(c.child.id());
+        return BenchResult::Fail {
+            error: e,
+            rss_kb: rss,
+        };
+    }
+    on_progress("waiting for diagnostics");
+    let diag_info = match c.wait_for_diagnostics_with_min(index_timeout, 1) {
+        Ok(d) => d,
+        Err(e) => {
+            let rss = get_rss(c.child.id());
+            return BenchResult::Fail {
+                error: format!("wait_for_diagnostics: {}", e),
+                rss_kb: rss,
+            };
+        }
+    };
+
+    // Extract the diagnostics array from the publishDiagnostics notification.
+    let diagnostics: Vec<Value> = diag_info
+        .message
+        .get("params")
+        .and_then(|p| p.get("diagnostics"))
+        .and_then(|d| d.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    let rss_kb = get_rss(c.child.id());
+    let file_uri = uri(target_file);
+
+    let params = json!({
+        "textDocument": { "uri": file_uri },
+        "range": {
+            "start": { "line": line, "character": col },
+            "end":   { "line": line, "character": col },
+        },
+        "context": {
+            "diagnostics": diagnostics,
+            "only": ["quickfix"],
+            "triggerKind": 1,
+        },
+    });
+
+    let mut iterations = Vec::new();
+    for i in 0..(w + n) {
+        on_progress(&iter_msg(i, w, n));
+        let start = Instant::now();
+        let req_id = match c.send("textDocument/codeAction", params.clone()) {
+            Ok(id) => id,
+            Err(e) => return BenchResult::Fail { error: e, rss_kb },
+        };
+        match c.read_response(req_id, timeout) {
+            Ok(resp) => {
+                let ms = start.elapsed().as_secs_f64() * 1000.0;
+                on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
+                if i >= w {
+                    let summary = response_summary(&resp, response_limit);
+                    iterations.push((ms, summary));
+                }
+            }
+            Err(e) => return BenchResult::Fail { error: e, rss_kb },
+        }
+    }
+    c.kill();
+    BenchResult::Ok { iterations, rss_kb }
 }
 
 /// Cold-start benchmark: spawns a fresh server per iteration, measures the full
@@ -3467,6 +3611,7 @@ const ALL_BENCHMARKS: &[&str] = &[
     "workspace/willCreateFiles",
     "workspace/willDeleteFiles",
     "workspace/executeCommand",
+    "textDocument/codeAction",
 ];
 
 // ── CLI ─────────────────────────────────────────────────────────────────────
@@ -4749,6 +4894,91 @@ fn main() {
             );
             eprintln!("  {} {}", style("saved").dim(), style(&p).dim());
         }
+    }
+
+    // ── textDocument/codeAction ──────────────────────────────────────────
+
+    if benchmarks.contains(&"textDocument/codeAction") {
+        num += 1;
+        eprintln!(
+            "\n{}",
+            style(format!("[{}/{}] textDocument/codeAction", num, total)).bold()
+        );
+        let method_cfg = methods.get("textDocument/codeAction");
+        let ca_line = method_cfg.and_then(|m| m.line).unwrap_or(target_line);
+        let ca_col = method_cfg.and_then(|m| m.col).unwrap_or(target_col);
+        let ca_file: PathBuf = method_cfg
+            .and_then(|m| m.file.as_deref())
+            .map(|f| cwd.join(f))
+            .unwrap_or_else(|| bench_sol.clone());
+        let rows = run_bench(&avail, response_limit, |srv, on_progress| {
+            bench_code_action(
+                srv,
+                &root,
+                &cwd,
+                &ca_file,
+                ca_line,
+                ca_col,
+                index_timeout,
+                timeout,
+                w,
+                n,
+                response_limit,
+                on_progress,
+                init_settings.as_ref(),
+                verbose,
+            )
+        });
+        // Verify expectations if --verify was passed
+        if verify {
+            if let Some(cfg) = method_cfg {
+                if let Some(ref expect) = cfg.expect {
+                    for row in &rows {
+                        if row.kind != 0 {
+                            continue; // skip failed rows
+                        }
+                        if let Some((_ms, resp)) = row.iterations.last() {
+                            match check_expectation(resp, expect) {
+                                Ok(()) => {
+                                    tally.passed += 1;
+                                    eprintln!(
+                                        "  {} [{}] textDocument/codeAction",
+                                        style("✓").green().bold(),
+                                        row.label,
+                                    );
+                                }
+                                Err(e) => {
+                                    tally.failed += 1;
+                                    eprintln!(
+                                        "  {} [{}] textDocument/codeAction: {}",
+                                        style("✗").red().bold(),
+                                        row.label,
+                                        e,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        all_results.push(("textDocument/codeAction", None, rows));
+        let p = save_json(
+            &all_results,
+            &versions,
+            &avail,
+            n,
+            w,
+            &timeout,
+            &index_timeout,
+            &project,
+            bench_file_rel,
+            target_line,
+            target_col,
+            &methods,
+            &partial_dir,
+        );
+        eprintln!("  {} {}", style("saved").dim(), style(&p).dim());
     }
 
     // ── Final output ─────────────────────────────────────────────────────
