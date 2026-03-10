@@ -946,7 +946,19 @@ impl LspClient {
                 return Err("timeout".into());
             }
             let msg = self.recv(remaining)?;
-            // Match by id — skip server-to-client requests and notifications
+            // Auto-respond to server-to-client requests (e.g.
+            // window/workDoneProgress/create) that may arrive while we're
+            // waiting for a specific response.  Without this, servers that
+            // send a request while we're reading a response would deadlock
+            // because the request goes unanswered and the server's transport
+            // stalls.
+            if let Some(id) = msg.get("id").cloned() {
+                if msg.get("method").is_some() {
+                    let _ = self.respond(id, json!(null));
+                    continue;
+                }
+            }
+            // Match by id — skip notifications
             if msg.get("id").and_then(|v| v.as_i64()) == Some(expected_id) {
                 return Ok(msg);
             }
@@ -1027,21 +1039,28 @@ impl LspClient {
                 };
             }
             let msg = self.recv(remaining)?;
-            if msg.get("method").and_then(|m| m.as_str()) == Some("textDocument/publishDiagnostics")
-            {
-                let count = msg
-                    .get("params")
-                    .and_then(|p| p.get("diagnostics"))
-                    .and_then(|d| d.as_array())
-                    .map(|a| a.len())
-                    .unwrap_or(0);
-                last_count = count;
-                last_msg = msg;
-                if count >= min_count {
-                    return Ok(DiagnosticsInfo { message: last_msg });
+            // Auto-respond to server requests (e.g. window/workDoneProgress/create)
+            // that may arrive while we're waiting for diagnostics. Without this,
+            // servers that send a progress-create request before diagnostics would
+            // deadlock because the request goes unanswered.
+            if let Some(id) = msg.get("id").cloned() {
+                if msg.get("method").is_some() {
+                    let _ = self.respond(id, json!(null));
+                    continue;
                 }
-                // count < min_count — keep waiting for the real publish
             }
+            let count = msg
+                .get("params")
+                .and_then(|p| p.get("diagnostics"))
+                .and_then(|d| d.as_array())
+                .map(|a| a.len())
+                .unwrap_or(0);
+            last_count = count;
+            last_msg = msg;
+            if count >= min_count {
+                return Ok(DiagnosticsInfo { message: last_msg });
+            }
+            // count < min_count — keep waiting for the real publish
         }
     }
 
@@ -1067,6 +1086,7 @@ impl LspClient {
                     "codeAction": { "dynamicRegistration": false },
                     "documentHighlight": { "dynamicRegistration": false },
                     "selectionRange": { "dynamicRegistration": false },
+                    "callHierarchy": { "dynamicRegistration": false },
                 },
                 "window": {
                     "workDoneProgress": true
@@ -2044,6 +2064,137 @@ fn bench_code_action(
     BenchResult::Ok { iterations, rss_kb }
 }
 
+/// Two-phase call hierarchy benchmark for `callHierarchy/incomingCalls` and
+/// `callHierarchy/outgoingCalls`.
+///
+/// Phase 1: sends `textDocument/prepareCallHierarchy` at the given position to
+/// obtain a `CallHierarchyItem`.
+/// Phase 2: sends the target method (`callHierarchy/incomingCalls` or
+/// `callHierarchy/outgoingCalls`) with the item from phase 1 as params.
+///
+/// Only phase 2 is timed.
+fn bench_call_hierarchy(
+    srv: &ServerConfig,
+    root: &str,
+    cwd: &Path,
+    target_file: &Path,
+    method: &str, // "callHierarchy/incomingCalls" or "callHierarchy/outgoingCalls"
+    line: u32,
+    col: u32,
+    index_timeout: Duration,
+    timeout: Duration,
+    w: usize,
+    n: usize,
+    response_limit: usize,
+    on_progress: &dyn Fn(&str),
+    init_settings: Option<&Value>,
+    verbose: bool,
+    wait_for_progress_token: Option<&str>,
+) -> BenchResult {
+    on_progress("spawning");
+    let mut c = match LspClient::spawn(&srv.cmd, &srv.args, cwd, verbose) {
+        Ok(c) => c,
+        Err(e) => {
+            return BenchResult::Fail {
+                error: e,
+                rss_kb: None,
+            }
+        }
+    };
+    if let Err(e) = c.initialize(root, init_settings) {
+        let rss = get_rss(c.child.id());
+        return BenchResult::Fail {
+            error: e,
+            rss_kb: rss,
+        };
+    }
+    if let Err(e) = c.open_file(target_file) {
+        let rss = get_rss(c.child.id());
+        return BenchResult::Fail {
+            error: e,
+            rss_kb: rss,
+        };
+    }
+    on_progress("waiting for diagnostics");
+    match c.wait_for_valid_diagnostics(index_timeout) {
+        Ok(_) => {}
+        Err(e) => {
+            let rss = get_rss(c.child.id());
+            return BenchResult::Fail {
+                error: format!("wait_for_diagnostics: {}", e),
+                rss_kb: rss,
+            };
+        }
+    }
+    on_progress("waiting for project index");
+    c.wait_for_progress_end(index_timeout, wait_for_progress_token);
+
+    let rss_kb = get_rss(c.child.id());
+    let file_uri = uri(target_file);
+
+    // Phase 1: prepareCallHierarchy to obtain the CallHierarchyItem
+    on_progress("prepareCallHierarchy");
+    let prepare_params = json!({
+        "textDocument": { "uri": file_uri },
+        "position": { "line": line, "character": col },
+    });
+    let prepare_id = match c.send("textDocument/prepareCallHierarchy", prepare_params) {
+        Ok(id) => id,
+        Err(e) => return BenchResult::Fail { error: e, rss_kb },
+    };
+    let prepare_resp = match c.read_response(prepare_id, timeout) {
+        Ok(r) => r,
+        Err(e) => {
+            return BenchResult::Fail {
+                error: format!("prepareCallHierarchy failed: {}", e),
+                rss_kb,
+            }
+        }
+    };
+
+    // Extract the first CallHierarchyItem from the response.
+    // Response is { "result": [ { ...item... } ] }
+    let item = prepare_resp
+        .get("result")
+        .and_then(|r| r.as_array())
+        .and_then(|a| a.first())
+        .cloned();
+    let item = match item {
+        Some(i) => i,
+        None => {
+            return BenchResult::Fail {
+                error: "prepareCallHierarchy returned no items".into(),
+                rss_kb,
+            }
+        }
+    };
+
+    // Phase 2: call the target method with { "item": <CallHierarchyItem> }
+    let params = json!({ "item": item });
+    let mut iterations = Vec::new();
+    for i in 0..(w + n) {
+        on_progress(&iter_msg(i, w, n));
+        let start = Instant::now();
+        let req_id = match c.send(method, params.clone()) {
+            Ok(id) => id,
+            Err(e) => return BenchResult::Fail { error: e, rss_kb },
+        };
+        match c.read_response(req_id, timeout) {
+            Ok(resp) => {
+                let ms = start.elapsed().as_secs_f64() * 1000.0;
+                on_progress(&format!("{}  {:.1}ms", iter_msg(i, w, n), ms));
+                if i >= w {
+                    let summary = response_summary(&resp, response_limit);
+                    iterations.push((ms, summary));
+                }
+            }
+            Err(e) => return BenchResult::Fail { error: e, rss_kb },
+        }
+    }
+    c.kill();
+    BenchResult::Ok { iterations, rss_kb }
+}
+
 /// Cold-start benchmark: spawns a fresh server per iteration, measures the full
 /// end-to-end time from didOpen through diagnostics through the method response.
 /// This captures the real user experience — compilation + request latency.
@@ -2100,7 +2251,11 @@ fn bench_lsp_method_cold(
             || method == "textDocument/documentHighlight"
             || method == "textDocument/inlayHint"
             || method == "textDocument/documentLink"
-            || method == "workspace/symbol";
+            || method == "workspace/symbol"
+            || method == "textDocument/prepareCallHierarchy"
+            || method == "callHierarchy/incomingCalls"
+            || method == "callHierarchy/outgoingCalls"
+            || method == "textDocument/implementation";
 
         // Start timing from didOpen — this is what the user feels
         let start = Instant::now();
@@ -2112,20 +2267,44 @@ fn bench_lsp_method_cold(
         }
 
         if needs_index_ready {
-            // For index-dependent methods, wait for $/progress end which
-            // signals the project index is complete.  When progress_token
-            // is set, wait for that specific token (e.g. "solidity/projectIndexFull"
-            // for the full two-phase index).
             if let Some(token) = progress_token {
+                // Wait for diagnostics first (file build from didOpen),
+                // then wait for the specific progress token (e.g.
+                // "solidity/projectIndexFull" for the full two-phase index).
+                on_progress(&format!("{}  waiting for diagnostics", iter_msg(i, w, n)));
+                match c.wait_for_valid_diagnostics(timeout) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        let rss = get_rss(c.child.id());
+                        return BenchResult::Fail {
+                            error: format!("wait_for_diagnostics: {}", e),
+                            rss_kb: rss,
+                        };
+                    }
+                }
                 on_progress(&format!(
                     "{}  waiting for progress: {}",
                     iter_msg(i, w, n),
                     token
                 ));
+                c.wait_for_progress_end(timeout, Some(token));
             } else {
-                on_progress(&format!("{}  waiting for project index", iter_msg(i, w, n)));
+                // No specific progress token — wait for diagnostics
+                // (the file build) which is sufficient for methods that
+                // only need the file build (e.g. implementation from a
+                // concrete function to its interface).
+                on_progress(&format!("{}  waiting for diagnostics", iter_msg(i, w, n)));
+                match c.wait_for_diagnostics_with_min(timeout, 1) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        let rss = get_rss(c.child.id());
+                        return BenchResult::Fail {
+                            error: format!("wait_for_diagnostics: {}", e),
+                            rss_kb: rss,
+                        };
+                    }
+                }
             }
-            c.wait_for_progress_end(timeout, progress_token);
         } else {
             // For methods that only need single-file data, wait for
             // diagnostics (the single-file compile).
@@ -2264,7 +2443,10 @@ fn bench_lsp_method(
         || method == "textDocument/documentHighlight"
         || method == "textDocument/inlayHint"
         || method == "textDocument/documentLink"
-        || method == "workspace/symbol";
+        || method == "workspace/symbol"
+        || method == "textDocument/prepareCallHierarchy"
+        || method == "callHierarchy/incomingCalls"
+        || method == "callHierarchy/outgoingCalls";
     if needs_index_ready {
         on_progress("waiting for project index");
         c.wait_for_progress_end(index_timeout, None);
@@ -2483,6 +2665,7 @@ fn bench_lsp_didopen(
     on_progress: &dyn Fn(&str),
     init_settings: Option<&Value>,
     verbose: bool,
+    wait_for_progress_token: Option<&str>,
 ) -> BenchResult {
     on_progress("spawning");
     let mut c = match LspClient::spawn(&srv.cmd, &srv.args, cwd, verbose) {
@@ -2518,6 +2701,10 @@ fn bench_lsp_didopen(
                 rss_kb: rss,
             };
         }
+    }
+    if wait_for_progress_token.is_some() {
+        on_progress("waiting for project index");
+        c.wait_for_progress_end(index_timeout, wait_for_progress_token);
     }
     let rss_kb = get_rss(c.child.id());
     let file_uri = uri(target_file);
@@ -3708,6 +3895,9 @@ const ALL_BENCHMARKS: &[&str] = &[
     "workspace/willDeleteFiles",
     "workspace/executeCommand",
     "textDocument/codeAction",
+    "textDocument/prepareCallHierarchy",
+    "callHierarchy/incomingCalls",
+    "callHierarchy/outgoingCalls",
 ];
 
 // ── CLI ─────────────────────────────────────────────────────────────────────
@@ -4452,6 +4642,11 @@ fn main() {
             "workspace/executeCommand",
             &execute_command_params,
         ),
+        (
+            "textDocument/prepareCallHierarchy",
+            "textDocument/prepareCallHierarchy",
+            &position_params,
+        ),
     ];
 
     // ── spawn ────────────────────────────────────────────────────────────
@@ -4774,6 +4969,9 @@ fn main() {
                     .get(*method)
                     .and_then(|m| m.col)
                     .unwrap_or(target_col);
+                let progress_token = methods
+                    .get(*method)
+                    .and_then(|m| m.wait_for_progress_token.as_deref());
                 run_bench(&avail, response_limit, |srv, on_progress| {
                     bench_lsp_didopen(
                         srv,
@@ -4791,6 +4989,7 @@ fn main() {
                         on_progress,
                         init_settings.as_ref(),
                         verbose,
+                        progress_token,
                     )
                 })
             } else if snapshots.is_empty() {
@@ -5079,6 +5278,97 @@ fn main() {
             &partial_dir,
         );
         eprintln!("  {} {}", style("saved").dim(), style(&p).dim());
+    }
+
+    // ── callHierarchy/incomingCalls & outgoingCalls ──────────────────────
+    for ch_method in &["callHierarchy/incomingCalls", "callHierarchy/outgoingCalls"] {
+        if benchmarks.contains(ch_method) {
+            num += 1;
+            eprintln!(
+                "\n{}",
+                style(format!("[{}/{}] {}", num, total, ch_method)).bold()
+            );
+            let method_cfg = methods.get(*ch_method);
+            let ch_line = method_cfg.and_then(|m| m.line).unwrap_or(target_line);
+            let ch_col = method_cfg.and_then(|m| m.col).unwrap_or(target_col);
+            let ch_file: PathBuf = method_cfg
+                .and_then(|m| m.file.as_deref())
+                .map(|f| cwd.join(f))
+                .unwrap_or_else(|| bench_sol.clone());
+            let ch_method_str = ch_method.to_string();
+            let ch_progress_token = method_cfg.and_then(|m| m.wait_for_progress_token.as_deref());
+            let rows = run_bench(&avail, response_limit, |srv, on_progress| {
+                bench_call_hierarchy(
+                    srv,
+                    &root,
+                    &cwd,
+                    &ch_file,
+                    &ch_method_str,
+                    ch_line,
+                    ch_col,
+                    index_timeout,
+                    timeout,
+                    w,
+                    n,
+                    response_limit,
+                    on_progress,
+                    init_settings.as_ref(),
+                    verbose,
+                    ch_progress_token,
+                )
+            });
+            if verify {
+                if let Some(cfg) = method_cfg {
+                    if let Some(ref expect) = cfg.expect {
+                        for row in &rows {
+                            if row.kind != 0 {
+                                continue;
+                            }
+                            if let Some((_ms, resp)) = row.iterations.last() {
+                                match check_expectation(resp, expect) {
+                                    Ok(()) => {
+                                        tally.passed += 1;
+                                        eprintln!(
+                                            "  {} [{}] {}",
+                                            style("✓").green().bold(),
+                                            row.label,
+                                            ch_method,
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tally.failed += 1;
+                                        eprintln!(
+                                            "  {} [{}] {}: {}",
+                                            style("✗").red().bold(),
+                                            row.label,
+                                            ch_method,
+                                            e,
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            all_results.push((ch_method, None, rows));
+            let p = save_json(
+                &all_results,
+                &versions,
+                &avail,
+                n,
+                w,
+                &timeout,
+                &index_timeout,
+                &project,
+                bench_file_rel,
+                target_line,
+                target_col,
+                &methods,
+                &partial_dir,
+            );
+            eprintln!("  {} {}", style("saved").dim(), style(&p).dim());
+        }
     }
 
     // ── Final output ─────────────────────────────────────────────────────
